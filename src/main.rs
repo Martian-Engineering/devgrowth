@@ -1,10 +1,11 @@
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
-use log::info;
+use log::{error, info};
 use sqlx::postgres::PgPool;
 use std::io;
 use std::sync::Arc;
 
 mod db;
+mod repository;
 
 struct AppState {
     db_pool: PgPool,
@@ -12,6 +13,19 @@ struct AppState {
 
 async fn index() -> impl Responder {
     HttpResponse::Ok().body("Hello world!")
+}
+
+async fn create_repository(
+    state: web::Data<Arc<AppState>>,
+    new_repo: web::Json<repository::NewRepository>,
+) -> impl Responder {
+    match repository::create_repository(&state.db_pool, new_repo.into_inner()).await {
+        Ok(repo) => HttpResponse::Created().json(repo),
+        Err(e) => {
+            error!("Failed to create repository: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }
 
 #[actix_web::main]
@@ -30,6 +44,7 @@ async fn main() -> io::Result<()> {
             .wrap(Logger::new("%a %{User-Agent}i"))
             .app_data(web::Data::new(app_state.clone()))
             .route("/", web::get().to(index))
+            .route("/repositories", web::post().to(create_repository))
     })
     .bind("127.0.0.1:8080")?
     .run()
