@@ -1,0 +1,5 @@
+/target
+/target/debug/
+Cargo.lock
+.env
+.DS_Store
