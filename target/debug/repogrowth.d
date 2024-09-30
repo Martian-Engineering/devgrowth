@@ -1,1 +1,0 @@
-/Users/josh/Projects/repogrowth/target/debug/repogrowth: /Users/josh/Projects/repogrowth/migrations/20240930051844_create_repository_table.sql /Users/josh/Projects/repogrowth/migrations/20240930055354_create_commit_table.sql /Users/josh/Projects/repogrowth/src/db.rs /Users/josh/Projects/repogrowth/src/main.rs

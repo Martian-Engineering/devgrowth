@@ -1,31 +1,37 @@
-mod db;
-
+use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use log::info;
 use sqlx::postgres::PgPool;
+use std::io;
 use std::sync::Arc;
+
+mod db;
 
 struct AppState {
     db_pool: PgPool,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let pool: PgPool = db::create_pool().await?;
+async fn index() -> impl Responder {
+    HttpResponse::Ok().body("Hello world!")
+}
+
+#[actix_web::main]
+async fn main() -> io::Result<()> {
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    let pool: PgPool = db::create_pool().await.expect("Failed to create pool");
 
     // Create the application state
     let app_state = Arc::new(AppState { db_pool: pool });
 
-    // Use the app_state in your application...
-    run_app(app_state).await?;
+    info!("Starting server at http://localhost:8080");
 
-    Ok(())
-}
-
-async fn run_app(state: Arc<AppState>) -> Result<(), Box<dyn std::error::Error>> {
-    // Example of using the connection pool
-    let result = sqlx::query("SELECT 1").fetch_one(&state.db_pool).await?;
-
-    println!("Query result: {:?}", result);
-
-    // Rest of your application logic...
-    Ok(())
+    HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::default())
+            .wrap(Logger::new("%a %{User-Agent}i"))
+            .app_data(web::Data::new(app_state.clone()))
+            .route("/", web::get().to(index))
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
 }

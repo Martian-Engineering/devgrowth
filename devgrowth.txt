@@ -1,0 +1,14 @@
+Milestone #1 
+
+User Stories
+
+As an user, I can:
+* See repositories that have been analyzed
+* Enter a repository to analyze
+  - When added, a repository is enqueued for analysis
+* See the status of a repository under analysis
+  - its place in the queue when enqueued
+  - progress towards completion
+  - date of last analysis
+  - most recent commit
+* See growth accounting metrics for the last twelve months
