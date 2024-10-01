@@ -1,16 +1,22 @@
+use crate::job_queue::{Job, JobQueue};
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use log::{error, info};
+use octocrab::Octocrab;
 use sqlx::postgres::PgPool;
 use std::io;
 use std::sync::Arc;
 
 mod db;
+mod error;
 mod github;
+mod job_processor;
+mod job_queue;
 mod repository;
 
-struct AppState {
-    db_pool: PgPool,
-    octocrab: octocrab::Octocrab,
+pub struct AppState {
+    pub db_pool: PgPool,
+    pub octocrab: Arc<Octocrab>,
+    pub job_queue: Arc<JobQueue>,
 }
 
 async fn index() -> impl Responder {
@@ -18,13 +24,22 @@ async fn index() -> impl Responder {
 }
 
 async fn create_repository(
-    state: web::Data<Arc<AppState>>,
+    state: web::Data<AppState>,
     new_repo: web::Json<repository::NewRepository>,
 ) -> impl Responder {
     let new_repo = new_repo.into_inner();
     match github::repository_exists(&state.octocrab, &new_repo.owner, &new_repo.name).await {
         Ok(true) => match repository::create_repository(&state.db_pool, new_repo).await {
-            Ok(repo) => HttpResponse::Created().json(repo),
+            Ok(repo) => {
+                let job = Job {
+                    repository_id: repo.id,
+                    owner: repo.owner.clone(),
+                    name: repo.name.clone(),
+                };
+                state.job_queue.push(job).await;
+
+                HttpResponse::Created().json(repo)
+            }
             Err(e) => {
                 if let Some(db_err) = e.as_database_error() {
                     if db_err
@@ -58,15 +73,26 @@ async fn main() -> io::Result<()> {
 
     // Create the Octocrab instance
     let token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN not set");
-    let octocrab = octocrab::Octocrab::builder()
-        .personal_token(token)
-        .build()
-        .expect("Failed to create Octocrab instance");
+    let octocrab = Arc::new(
+        octocrab::Octocrab::builder()
+            .personal_token(token)
+            .build()
+            .expect("Failed to create Octocrab instance"),
+    );
+
+    let job_queue = JobQueue::new();
+
+    tokio::spawn(job_processor::process_jobs(
+        job_queue.clone(),
+        octocrab.clone(),
+        pool.clone(),
+    ));
 
     // Create the application state
-    let app_state = Arc::new(AppState {
+    let app_state = web::Data::new(AppState {
         db_pool: pool,
-        octocrab: octocrab,
+        octocrab,
+        job_queue,
     });
 
     info!("Starting server at http://localhost:8080");
@@ -75,7 +101,7 @@ async fn main() -> io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
-            .app_data(web::Data::new(app_state.clone()))
+            .app_data(app_state.clone())
             .route("/", web::get().to(index))
             .route("/repositories", web::post().to(create_repository))
     })
