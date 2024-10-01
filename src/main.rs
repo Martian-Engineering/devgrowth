@@ -13,7 +13,7 @@ mod job_processor;
 mod job_queue;
 mod repository;
 
-use repository::create_repository;
+use repository::{create_repository, sync_repository};
 
 pub struct AppState {
     pub db_pool: PgPool,
@@ -63,6 +63,10 @@ async fn main() -> io::Result<()> {
             .wrap(Logger::new("%a %{User-Agent}i"))
             .app_data(app_state.clone())
             .route("/", web::get().to(index))
+            .route(
+                "/repositories/{owner}/{name}",
+                web::put().to(sync_repository),
+            )
             .route("/repositories", web::post().to(create_repository))
     })
     .bind("127.0.0.1:8080")?

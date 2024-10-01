@@ -22,7 +22,8 @@ pub async fn process_jobs(queue: Arc<JobQueue>, octocrab: Arc<Octocrab>, pool: P
                         job_clone.owner, job_clone.name, e
                     );
                     // Re-queue the job
-                    queue.push(job_clone).await;
+                    // This is a bad idea, as it can put the queue into an infinite loop
+                    // queue.push(job_clone).await;
                 }
             }
         }

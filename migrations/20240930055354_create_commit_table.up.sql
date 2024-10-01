@@ -6,5 +6,6 @@ CREATE TABLE commit (
     author text NOT NULL,
     date timestamptz NOT NULL,
     message text,
-    FOREIGN KEY (repository_id) REFERENCES repository(repository_id)
+    FOREIGN KEY (repository_id) REFERENCES repository(repository_id),
+    UNIQUE (repository_id, sha)
 );

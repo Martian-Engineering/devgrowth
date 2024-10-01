@@ -3,8 +3,9 @@ use crate::job_queue::Job;
 use crate::AppState;
 use actix_web::{web, HttpResponse, Responder};
 use chrono::{DateTime, Utc};
-use log::error;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::postgres::PgPool;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -89,4 +90,55 @@ async fn write_repository(
         created_at: row.created_at,
         updated_at: row.updated_at,
     })
+}
+
+pub async fn sync_repository(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> impl Responder {
+    let (owner, name) = path.into_inner();
+
+    // Check if the repository exists in our database
+    match get_repository_id(&state.db_pool, &owner, &name).await {
+        Ok(Some(repository_id)) => {
+            let job = Job {
+                repository_id,
+                owner: owner.clone(),
+                name: name.clone(),
+            };
+            state.job_queue.push(job).await;
+            info!("Queued sync job for repository: {}/{}", owner, name);
+            HttpResponse::Accepted().json(json!({
+                "message": "Repository sync job queued",
+                "owner": owner,
+                "name": name
+            }))
+        }
+        Ok(None) => {
+            error!("Repository {}/{} not found in database", owner, name);
+            HttpResponse::NotFound().json(json!({
+                "error": "Repository not found in database"
+            }))
+        }
+        Err(e) => {
+            error!("Database error while checking repository: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+async fn get_repository_id(
+    pool: &PgPool,
+    owner: &str,
+    name: &str,
+) -> Result<Option<i32>, sqlx::Error> {
+    let result = sqlx::query!(
+        "SELECT repository_id FROM repository WHERE owner = $1 AND name = $2",
+        owner,
+        name
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.map(|row| row.repository_id))
 }
