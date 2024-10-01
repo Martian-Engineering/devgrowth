@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use sqlx::postgres::{PgPool, PgPoolOptions};
@@ -26,16 +27,16 @@ impl Settings {
     }
 }
 
-pub async fn create_pool() -> Result<PgPool, sqlx::Error> {
+pub async fn create_pool() -> Result<PgPool, AppError> {
     // Load .env file
     dotenv::dotenv().ok();
 
     // Load configuration
-    let settings = Settings::new().expect("Failed to load settings");
+    let settings = Settings::new().map_err(|e| AppError::Configuration(e.to_string()))?;
 
     // Get database credentials from environment variables
-    let username = env::var("DB_USER").expect("DB_USER must be set");
-    let password = env::var("DB_PASS").expect("DB_PASS must be set");
+    let username = env::var("DB_USER").map_err(|e| AppError::Environment(e.to_string()))?;
+    let password = env::var("DB_PASS").map_err(|e| AppError::Environment(e.to_string()))?;
 
     // Construct the database URL
     let database_url = format!(
@@ -49,7 +50,10 @@ pub async fn create_pool() -> Result<PgPool, sqlx::Error> {
         .connect(&database_url)
         .await?;
 
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .map_err(AppError::from)?;
 
     Ok(pool)
 }

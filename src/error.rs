@@ -1,3 +1,4 @@
+use sqlx::migrate::MigrateError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -5,11 +6,17 @@ pub enum AppError {
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
+    #[error("Migration error: {0}")]
+    Migration(#[from] MigrateError),
+
     #[error("GitHub API error: {0}")]
     GitHub(#[from] octocrab::Error),
 
-    #[error("Backoff error: {0}")]
-    Backoff(String),
+    #[error("Configuration error: {0}")]
+    Configuration(String),
+
+    #[error("Environment error: {0}")]
+    Environment(String),
 }
 
 impl From<backoff::Error<octocrab::Error>> for AppError {

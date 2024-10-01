@@ -1,4 +1,9 @@
+use crate::github::repository_exists;
+use crate::job_queue::Job;
+use crate::AppState;
+use actix_web::{web, HttpResponse, Responder};
 use chrono::{DateTime, Utc};
+use log::error;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 
@@ -19,6 +24,48 @@ pub struct NewRepository {
 }
 
 pub async fn create_repository(
+    state: web::Data<AppState>,
+    new_repo: web::Json<NewRepository>,
+) -> impl Responder {
+    let new_repo = new_repo.into_inner();
+    match repository_exists(&state.octocrab, &new_repo.owner, &new_repo.name).await {
+        Ok(true) => match write_repository(&state.db_pool, new_repo).await {
+            Ok(repo) => {
+                let job = Job {
+                    repository_id: repo.id,
+                    owner: repo.owner.clone(),
+                    name: repo.name.clone(),
+                };
+                state.job_queue.push(job).await;
+
+                HttpResponse::Created().json(repo)
+            }
+            Err(e) => {
+                if let Some(db_err) = e.as_database_error() {
+                    if db_err
+                        .constraint()
+                        .map_or(false, |c| c == "repository_name_owner_key")
+                    {
+                        return HttpResponse::Conflict()
+                            .body("Repository already exists in the database");
+                    }
+                }
+                error!("Failed to create repository in database: {:?}", e);
+                HttpResponse::InternalServerError().finish()
+            }
+        },
+        Ok(false) => {
+            error!("Repository does not exist on GitHub");
+            HttpResponse::BadRequest().body("Repository does not exist on GitHub")
+        }
+        Err(e) => {
+            error!("Failed to check repository existence: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+async fn write_repository(
     pool: &PgPool,
     new_repo: NewRepository,
 ) -> Result<Repository, sqlx::Error> {

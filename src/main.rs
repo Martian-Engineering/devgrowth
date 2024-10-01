@@ -1,6 +1,6 @@
-use crate::job_queue::{Job, JobQueue};
+use crate::job_queue::JobQueue;
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
-use log::{error, info};
+use log::info;
 use octocrab::Octocrab;
 use sqlx::postgres::PgPool;
 use std::io;
@@ -13,6 +13,8 @@ mod job_processor;
 mod job_queue;
 mod repository;
 
+use repository::create_repository;
+
 pub struct AppState {
     pub db_pool: PgPool,
     pub octocrab: Arc<Octocrab>,
@@ -21,48 +23,6 @@ pub struct AppState {
 
 async fn index() -> impl Responder {
     HttpResponse::Ok().body("Hello world!")
-}
-
-async fn create_repository(
-    state: web::Data<AppState>,
-    new_repo: web::Json<repository::NewRepository>,
-) -> impl Responder {
-    let new_repo = new_repo.into_inner();
-    match github::repository_exists(&state.octocrab, &new_repo.owner, &new_repo.name).await {
-        Ok(true) => match repository::create_repository(&state.db_pool, new_repo).await {
-            Ok(repo) => {
-                let job = Job {
-                    repository_id: repo.id,
-                    owner: repo.owner.clone(),
-                    name: repo.name.clone(),
-                };
-                state.job_queue.push(job).await;
-
-                HttpResponse::Created().json(repo)
-            }
-            Err(e) => {
-                if let Some(db_err) = e.as_database_error() {
-                    if db_err
-                        .constraint()
-                        .map_or(false, |c| c == "repository_name_owner_key")
-                    {
-                        return HttpResponse::Conflict()
-                            .body("Repository already exists in the database");
-                    }
-                }
-                error!("Failed to create repository in database: {:?}", e);
-                HttpResponse::InternalServerError().finish()
-            }
-        },
-        Ok(false) => {
-            error!("Repository does not exist on GitHub");
-            HttpResponse::BadRequest().body("Repository does not exist on GitHub")
-        }
-        Err(e) => {
-            error!("Failed to check repository existence: {:?}", e);
-            HttpResponse::InternalServerError().finish()
-        }
-    }
 }
 
 #[actix_web::main]
