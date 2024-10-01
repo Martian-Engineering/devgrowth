@@ -1,9 +1,10 @@
-use crate::github::repository_exists;
+use crate::error::AppError;
 use crate::job_queue::Job;
 use crate::AppState;
 use actix_web::{web, HttpResponse, Responder};
 use chrono::{DateTime, Utc};
 use log::{error, info};
+use octocrab::Octocrab;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
@@ -22,6 +23,18 @@ pub struct Repository {
 pub struct NewRepository {
     pub name: String,
     pub owner: String,
+}
+
+pub async fn repository_exists(
+    octocrab: &Octocrab,
+    repo_owner: &str,
+    repo_name: &str,
+) -> Result<bool, AppError> {
+    match octocrab.repos(repo_owner, repo_name).get().await {
+        Ok(_) => Ok(true),
+        Err(octocrab::Error::GitHub { source, .. }) if source.message == "Not Found" => Ok(false),
+        Err(e) => Err(AppError::from(e)),
+    }
 }
 
 pub async fn create_repository(

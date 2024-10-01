@@ -1,5 +1,5 @@
+use crate::commit::fetch_and_persist_commits;
 use crate::error::AppError;
-use crate::github::fetch_and_persist_commits;
 use crate::job_queue::{Job, JobQueue};
 use log::{error, info};
 use octocrab::Octocrab;

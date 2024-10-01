@@ -6,9 +6,9 @@ use sqlx::postgres::PgPool;
 use std::io;
 use std::sync::Arc;
 
+mod commit;
 mod db;
 mod error;
-mod github;
 mod job_processor;
 mod job_queue;
 mod repository;
