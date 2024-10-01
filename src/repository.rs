@@ -25,6 +25,70 @@ pub struct NewRepository {
     pub owner: String,
 }
 
+#[derive(Serialize)]
+pub struct RepositoryMetadata {
+    id: i32,
+    owner: String,
+    name: String,
+    commit_count: i64,
+    latest_commit_date: Option<DateTime<Utc>>,
+    latest_commit_author: Option<String>,
+    indexed_at: Option<DateTime<Utc>>,
+    github_url: String,
+}
+
+pub async fn get_repository_metadata(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> impl Responder {
+    let (owner, name) = path.into_inner();
+
+    match fetch_repository_metadata(&state.db_pool, &owner, &name).await {
+        Ok(Some(metadata)) => HttpResponse::Ok().json(metadata),
+        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Repository not found"
+        })),
+        Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "An error occurred while fetching repository metadata"
+        })),
+    }
+}
+
+async fn fetch_repository_metadata(
+    pool: &PgPool,
+    owner: &str,
+    name: &str,
+) -> Result<Option<RepositoryMetadata>, sqlx::Error> {
+    let result = sqlx::query_as!(
+        RepositoryMetadata,
+        r#"
+        SELECT
+            r.repository_id as id,
+            r.owner,
+            r.name,
+            COUNT(c.commit_id) as "commit_count!",
+            MAX(c.date) as "latest_commit_date?",
+            (SELECT author FROM commit WHERE repository_id = r.repository_id ORDER BY date DESC LIMIT 1) as "latest_commit_author?",
+            r.indexed_at,
+            CONCAT('https://github.com/', r.owner, '/', r.name) as "github_url!"
+        FROM
+            repository r
+        LEFT JOIN
+            commit c ON r.repository_id = c.repository_id
+        WHERE
+            r.owner = $1 AND r.name = $2
+        GROUP BY
+            r.repository_id
+        "#,
+        owner,
+        name
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result)
+}
+
 pub async fn repository_exists(
     octocrab: &Octocrab,
     repo_owner: &str,

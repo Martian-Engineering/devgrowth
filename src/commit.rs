@@ -73,6 +73,21 @@ pub async fn fetch_and_persist_commits(
         );
     }
 
+    sqlx::query!(
+        "UPDATE repository SET indexed_at = $1 WHERE repository_id = $2",
+        Utc::now(),
+        job.repository_id
+    )
+    .execute(pool)
+    .await?;
+
+    info!(
+        "Updated indexed_at for repository {}/{} to {}",
+        job.owner,
+        job.name,
+        Utc::now()
+    );
+
     Ok(())
 }
 
