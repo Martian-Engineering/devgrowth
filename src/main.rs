@@ -13,7 +13,7 @@ mod job_processor;
 mod job_queue;
 mod repository;
 
-use repository::{create_repository, get_repository_metadata, sync_repository};
+use repository::{create_repository, get_repository_ga, get_repository_metadata, sync_repository};
 
 pub struct AppState {
     pub db_pool: PgPool,
@@ -70,6 +70,10 @@ async fn main() -> io::Result<()> {
             .route(
                 "/repositories/{owner}/{name}",
                 web::get().to(get_repository_metadata),
+            )
+            .route(
+                "/repositories/{owner}/{name}/ga",
+                web::get().to(get_repository_ga),
             )
             .route("/repositories", web::post().to(create_repository))
     })
