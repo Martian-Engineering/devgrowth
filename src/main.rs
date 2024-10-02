@@ -1,9 +1,12 @@
 use crate::job_queue::JobQueue;
-use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use actix_files as fs;
+use actix_files::NamedFile;
+use actix_web::{middleware::Logger, web, App, HttpServer};
 use log::info;
 use octocrab::Octocrab;
 use sqlx::postgres::PgPool;
 use std::io;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 mod commit;
@@ -13,7 +16,10 @@ mod job_processor;
 mod job_queue;
 mod repository;
 
-use repository::{create_repository, get_repository_ga, get_repository_metadata, sync_repository};
+use repository::{
+    create_repository, get_repository_ga, get_repository_metadata, list_repositories,
+    sync_repository,
+};
 
 pub struct AppState {
     pub db_pool: PgPool,
@@ -21,8 +27,14 @@ pub struct AppState {
     pub job_queue: Arc<JobQueue>,
 }
 
-async fn index() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
+async fn index() -> Result<NamedFile, actix_web::Error> {
+    let path: PathBuf = "src/frontend/index.html".parse().unwrap();
+    Ok(NamedFile::open(path)?)
+}
+
+async fn repository_page() -> Result<NamedFile, actix_web::Error> {
+    let path: PathBuf = "src/frontend/repository.html".parse().unwrap();
+    Ok(NamedFile::open(path)?)
 }
 
 #[actix_web::main]
@@ -62,20 +74,23 @@ async fn main() -> io::Result<()> {
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .app_data(app_state.clone())
+            .service(fs::Files::new("/static", "src/frontend").show_files_listing())
             .route("/", web::get().to(index))
+            .route("/repository/{owner}/{name}", web::get().to(repository_page))
+            .route("/api/repositories", web::get().to(list_repositories))
+            .route("/api/repositories", web::post().to(create_repository))
             .route(
-                "/repositories/{owner}/{name}",
+                "/api/repositories/{owner}/{name}",
                 web::put().to(sync_repository),
             )
             .route(
-                "/repositories/{owner}/{name}",
+                "/api/repositories/{owner}/{name}",
                 web::get().to(get_repository_metadata),
             )
             .route(
-                "/repositories/{owner}/{name}/ga",
+                "/api/repositories/{owner}/{name}/ga",
                 web::get().to(get_repository_ga),
             )
-            .route("/repositories", web::post().to(create_repository))
     })
     .bind("127.0.0.1:8080")?
     .run()

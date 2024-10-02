@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::job_queue::Job;
 use crate::AppState;
+use actix_web::web::Query;
 use actix_web::{web, HttpResponse, Responder};
 use chrono::{DateTime, Utc};
 use log::{error, info};
@@ -23,6 +24,12 @@ pub struct Repository {
 pub struct NewRepository {
     pub name: String,
     pub owner: String,
+}
+
+#[derive(Deserialize)]
+pub struct RepositoryListQuery {
+    limit: Option<i64>,
+    offset: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -109,6 +116,44 @@ pub async fn repository_exists(
         Err(octocrab::Error::GitHub { source, .. }) if source.message == "Not Found" => Ok(false),
         Err(e) => Err(AppError::from(e)),
     }
+}
+
+pub async fn list_repositories(
+    state: web::Data<AppState>,
+    query: Query<RepositoryListQuery>,
+) -> impl Responder {
+    let limit = query.limit.unwrap_or(50); // Default limit to 50
+    let offset = query.offset.unwrap_or(0); // Default offset to 0
+
+    match fetch_repositories(&state.db_pool, limit, offset).await {
+        Ok(repositories) => HttpResponse::Ok().json(repositories),
+        Err(e) => {
+            error!("Failed to fetch repositories: {:?}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "error": "An error occurred while fetching repositories"
+            }))
+        }
+    }
+}
+
+async fn fetch_repositories(
+    pool: &PgPool,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Repository>, sqlx::Error> {
+    sqlx::query_as!(
+        Repository,
+        r#"
+        SELECT repository_id as id, name, owner, indexed_at, created_at, updated_at
+        FROM repository
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await
 }
 
 pub async fn create_repository(
