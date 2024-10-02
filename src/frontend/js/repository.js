@@ -22,21 +22,85 @@ document.addEventListener("DOMContentLoaded", () => {
 
   fetch(`/api/repositories/${owner}/${name}/ga`)
     .then((response) => response.json())
-    .then((ga) => {
-      console.log(ga);
-      const gaDiv = document.getElementById("repo-ga");
-
-      // Assuming ga is an array of objects with date, mau, retained, new, resurrected, and churned
-      const latestGa = ga[ga.length - 1]; // Get the most recent data point
-
-      gaDiv.innerHTML = `
-          <h2>Growth Accounting (Latest)</h2>
-          <p>Date: ${latestGa.date}</p>
-          <p>MAU: ${latestGa.mau}</p>
-          <p>Retained: ${latestGa.retained}</p>
-          <p>New: ${latestGa.new}</p>
-          <p>Resurrected: ${latestGa.resurrected}</p>
-          <p>Churned: ${latestGa.churned}</p>
-      `;
+    .then((gaData) => {
+      console.log(gaData);
+      createGrowthAccountingChart(gaData);
     });
 });
+
+function createGrowthAccountingChart(gaData) {
+  const ctx = document.getElementById("gaChart").getContext("2d");
+
+  const labels = gaData.map((d) => d.date);
+  const retained = gaData.map((d) => d.retained);
+  const newUsers = gaData.map((d) => d.new);
+  const resurrected = gaData.map((d) => d.resurrected);
+  const churned = gaData.map((d) => d.churned);
+
+  new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Retained",
+          data: retained,
+          backgroundColor: "rgba(75, 192, 192, 0.6)",
+        },
+        {
+          label: "New",
+          data: newUsers,
+          backgroundColor: "rgba(54, 162, 235, 0.6)",
+        },
+        {
+          label: "Resurrected",
+          data: resurrected,
+          backgroundColor: "rgba(255, 206, 86, 0.6)",
+        },
+        {
+          label: "Churned",
+          data: churned,
+          backgroundColor: "rgba(255, 99, 132, 0.6)",
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          stacked: true,
+        },
+        y: {
+          stacked: true,
+          title: {
+            display: true,
+            text: "Number of Developers",
+          },
+        },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              let label = context.dataset.label || "";
+              if (label) {
+                label += ": ";
+              }
+              if (context.parsed.y !== null) {
+                label += context.parsed.y;
+              }
+              return label;
+            },
+          },
+        },
+        title: {
+          display: true,
+          text: "Growth Accounting Over Time",
+        },
+        legend: {
+          position: "top",
+        },
+      },
+    },
+  });
+}
