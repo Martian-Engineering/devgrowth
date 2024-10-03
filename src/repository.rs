@@ -665,8 +665,6 @@ async fn fetch_growth_accounting(
             churned
         FROM
             mau_growth_accounting
-        WHERE
-            month < '2024-09-01'
         ORDER BY
             month ASC;
     "#;
