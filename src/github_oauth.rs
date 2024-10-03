@@ -1,5 +1,5 @@
+use crate::account::upsert_account;
 use crate::error::AppError;
-use crate::user::upsert_user;
 use crate::AppState;
 use actix_session::Session;
 use actix_web::http::header::ContentType;
@@ -96,26 +96,31 @@ async fn github_callback(
             // Fetch the user's information
             match user_octocrab.current().user().await {
                 Ok(user) => {
-                    // Add or update user in the database
-                    if let Err(e) = upsert_user(
+                    match upsert_account(
                         &state.db_pool,
                         &user.login.to_string(),
                         user.email.as_deref(),
                     )
                     .await
                     {
-                        error!("Failed to upsert user in database: {}", e);
-                        return HttpResponse::InternalServerError()
-                            .body("Failed to update user information");
-                    }
-
-                    // Optionally store user information in the session
-                    if let Err(e) = session.insert("github_user", &user) {
-                        info!("Failed to store user info in session: {}", e);
+                        Ok(account_id) => {
+                            if let Err(e) = session.insert("account_id", account_id) {
+                                error!("Failed to store account_id in session: {}", e);
+                                return HttpResponse::InternalServerError()
+                                    .body("Failed to store account information");
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to upsert account in database: {}", e);
+                            return HttpResponse::InternalServerError()
+                                .body("Failed to update account information");
+                        }
                     }
                 }
                 Err(e) => {
-                    info!("Failed to fetch user information: {}", e);
+                    info!("Failed to fetch account information: {}", e);
+                    return HttpResponse::InternalServerError()
+                        .body("Failed to fetch user information");
                 }
             }
 

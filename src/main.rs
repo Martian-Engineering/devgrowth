@@ -13,6 +13,8 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+mod account;
+mod collection;
 mod commit;
 mod db;
 mod error;
@@ -20,8 +22,11 @@ mod github_oauth;
 mod job_processor;
 mod job_queue;
 mod repository;
-mod user;
 
+use collection::{
+    add_repository_to_collection, create_collection, delete_collection, get_collection,
+    get_collections, remove_repository_from_collection, update_collection,
+};
 use repository::{
     create_repository, get_repository_ga, get_repository_metadata, list_repositories,
     sync_repository,
@@ -96,19 +101,41 @@ async fn main() -> io::Result<()> {
             .service(logout)
             .route("/", web::get().to(index))
             .route("/repository/{owner}/{name}", web::get().to(repository_page))
-            .route("/api/repositories", web::get().to(list_repositories))
-            .route("/api/repositories", web::post().to(create_repository))
-            .route(
-                "/api/repositories/{owner}/{name}",
-                web::put().to(sync_repository),
-            )
-            .route(
-                "/api/repositories/{owner}/{name}",
-                web::get().to(get_repository_metadata),
-            )
-            .route(
-                "/api/repositories/{owner}/{name}/ga",
-                web::get().to(get_repository_ga),
+            .service(
+                web::scope("/api")
+                    .service(
+                        web::scope("/repositories")
+                            .route("", web::get().to(list_repositories))
+                            .route("", web::post().to(create_repository))
+                            .service(
+                                web::resource("/{owner}/{name}")
+                                    .route(web::put().to(sync_repository))
+                                    .route(web::get().to(get_repository_metadata)),
+                            )
+                            .route("/{owner}/{name}/ga", web::get().to(get_repository_ga)),
+                    )
+                    .service(
+                        web::scope("/collections")
+                            .route("", web::post().to(create_collection))
+                            .route("", web::get().to(get_collections))
+                            .service(
+                                web::resource("/{collection_id}")
+                                    .route(web::get().to(get_collection))
+                                    .route(web::put().to(update_collection))
+                                    .route(web::delete().to(delete_collection)),
+                            )
+                            .route(
+                                "/{collection_id}/repositories",
+                                web::post().to(add_repository_to_collection),
+                            )
+                            .route(
+                                "/{collection_id}/repositories/{repository_id}",
+                                web::delete().to(remove_repository_from_collection),
+                            ), // .route(
+                               //     "/{collection_id}/growth-accounting",
+                               //     web::get().to(get_collection_growth_accounting),
+                               // ),
+                    ),
             )
     })
     .bind("127.0.0.1:8080")?
