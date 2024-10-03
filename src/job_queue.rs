@@ -6,6 +6,7 @@ pub struct Job {
     pub repository_id: i32,
     pub owner: String,
     pub name: String,
+    pub github_token: String,
 }
 
 pub struct JobQueue {

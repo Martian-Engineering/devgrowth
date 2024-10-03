@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::job_queue::Job;
 use crate::AppState;
+use actix_session::Session;
 use actix_web::web::Query;
 use actix_web::{web, HttpResponse, Responder};
 use chrono::{DateTime, Utc};
@@ -159,40 +160,58 @@ async fn fetch_repositories(
 pub async fn create_repository(
     state: web::Data<AppState>,
     new_repo: web::Json<NewRepository>,
+    session: Session,
 ) -> impl Responder {
     let new_repo = new_repo.into_inner();
-    match repository_exists(&state.octocrab, &new_repo.owner, &new_repo.name).await {
-        Ok(true) => match write_repository(&state.db_pool, new_repo).await {
-            Ok(repo) => {
-                let job = Job {
-                    repository_id: repo.id,
-                    owner: repo.owner.clone(),
-                    name: repo.name.clone(),
-                };
-                state.job_queue.push(job).await;
 
-                HttpResponse::Created().json(repo)
-            }
-            Err(e) => {
-                if let Some(db_err) = e.as_database_error() {
-                    if db_err
-                        .constraint()
-                        .map_or(false, |c| c == "repository_name_owner_key")
-                    {
-                        return HttpResponse::Conflict()
-                            .body("Repository already exists in the database");
+    match state.get_github_client(&session) {
+        Ok(github_client) => {
+            match repository_exists(&github_client, &new_repo.owner, &new_repo.name).await {
+                Ok(true) => match write_repository(&state.db_pool, new_repo).await {
+                    Ok(repo) => {
+                        let github_token = match session.get::<String>("github_token") {
+                            Ok(token) => token.unwrap_or_default(),
+                            Err(e) => {
+                                error!("Failed to get github_token from session: {:?}", e);
+                                return HttpResponse::InternalServerError().finish();
+                            }
+                        };
+                        let job = Job {
+                            repository_id: repo.id,
+                            owner: repo.owner.clone(),
+                            name: repo.name.clone(),
+                            github_token,
+                        };
+                        state.job_queue.push(job).await;
+
+                        HttpResponse::Created().json(repo)
                     }
+                    Err(e) => {
+                        if let Some(db_err) = e.as_database_error() {
+                            if db_err
+                                .constraint()
+                                .map_or(false, |c| c == "repository_name_owner_key")
+                            {
+                                return HttpResponse::Conflict()
+                                    .body("Repository already exists in the database");
+                            }
+                        }
+                        error!("Failed to create repository in database: {:?}", e);
+                        HttpResponse::InternalServerError().finish()
+                    }
+                },
+                Ok(false) => {
+                    error!("Repository does not exist on GitHub");
+                    HttpResponse::BadRequest().body("Repository does not exist on GitHub")
                 }
-                error!("Failed to create repository in database: {:?}", e);
-                HttpResponse::InternalServerError().finish()
+                Err(e) => {
+                    error!("Failed to check repository existence: {:?}", e);
+                    HttpResponse::InternalServerError().finish()
+                }
             }
-        },
-        Ok(false) => {
-            error!("Repository does not exist on GitHub");
-            HttpResponse::BadRequest().body("Repository does not exist on GitHub")
         }
         Err(e) => {
-            error!("Failed to check repository existence: {:?}", e);
+            error!("Failed to create GitHub client: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }
@@ -227,16 +246,25 @@ async fn write_repository(
 pub async fn sync_repository(
     state: web::Data<AppState>,
     path: web::Path<(String, String)>,
+    session: Session,
 ) -> impl Responder {
     let (owner, name) = path.into_inner();
 
-    // Check if the repository exists in our database
     match get_repository_id(&state.db_pool, &owner, &name).await {
         Ok(Some(repository_id)) => {
+            let github_token = match session.get::<String>("github_token") {
+                Ok(token) => token.unwrap_or_default(),
+                Err(e) => {
+                    error!("Failed to get github_token from session: {:?}", e);
+                    return HttpResponse::InternalServerError().finish();
+                }
+            };
+
             let job = Job {
                 repository_id,
                 owner: owner.clone(),
                 name: name.clone(),
+                github_token,
             };
             state.job_queue.push(job).await;
             info!("Queued sync job for repository: {}/{}", owner, name);

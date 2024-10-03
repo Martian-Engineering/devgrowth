@@ -1,9 +1,13 @@
 use crate::job_queue::JobQueue;
+// use crate::middleware::{AuthMiddleware, SessionLogger};
+use crate::middleware::AuthMiddleware;
 use actix_files as fs;
 use actix_files::NamedFile;
+use actix_session::Session;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::cookie::Key;
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer};
+use error::AppError;
 use github_oauth::{create_client, github_callback, login, logout, protected};
 use log::info;
 use oauth2::basic::BasicClient;
@@ -21,6 +25,7 @@ mod error;
 mod github_oauth;
 mod job_processor;
 mod job_queue;
+mod middleware;
 mod repository;
 
 use collection::{
@@ -34,9 +39,22 @@ use repository::{
 
 pub struct AppState {
     pub db_pool: PgPool,
-    pub octocrab: Arc<Octocrab>,
     pub job_queue: Arc<JobQueue>,
     pub oauth_client: BasicClient,
+}
+
+impl AppState {
+    pub fn get_github_client(&self, session: &Session) -> Result<Octocrab, AppError> {
+        let token = session
+            .get::<String>("github_token")
+            .map_err(|_| AppError::Unauthorized("No GitHub token found".into()))?
+            .ok_or_else(|| AppError::Unauthorized("No GitHub token found".into()))?;
+
+        Octocrab::builder()
+            .personal_token(token)
+            .build()
+            .map_err(|e| AppError::GitHub(e))
+    }
 }
 
 async fn index() -> Result<NamedFile, actix_web::Error> {
@@ -54,30 +72,15 @@ async fn main() -> io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     let pool: PgPool = db::create_pool().await.expect("Failed to create pool");
-
-    // Create the Octocrab instance
-    let token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN not set");
-    let octocrab = Arc::new(
-        octocrab::Octocrab::builder()
-            .personal_token(token)
-            .build()
-            .expect("Failed to create Octocrab instance"),
-    );
-
     let job_queue = JobQueue::new();
 
-    tokio::spawn(job_processor::process_jobs(
-        job_queue.clone(),
-        octocrab.clone(),
-        pool.clone(),
-    ));
+    tokio::spawn(job_processor::process_jobs(job_queue.clone(), pool.clone()));
 
     let oauth_client = create_client().expect("Failed to create OAuth client");
 
     // Create the application state
     let app_state = web::Data::new(AppState {
         db_pool: pool,
-        octocrab,
         job_queue,
         oauth_client: oauth_client.clone(),
     });
@@ -86,6 +89,7 @@ async fn main() -> io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            // .wrap(SessionLogger)
             .app_data(app_state.clone())
             .app_data(web::Data::new(oauth_client.clone()))
             .wrap(SessionMiddleware::new(
@@ -103,6 +107,8 @@ async fn main() -> io::Result<()> {
             .route("/repository/{owner}/{name}", web::get().to(repository_page))
             .service(
                 web::scope("/api")
+                    .wrap(AuthMiddleware)
+                    .default_service(web::to(|| HttpResponse::NotFound()))
                     .service(
                         web::scope("/repositories")
                             .route("", web::get().to(list_repositories))

@@ -148,9 +148,6 @@ async fn protected(session: Session) -> impl Responder {
             // Fetch the user's information
             match user_octocrab.current().user().await {
                 Ok(user) => {
-                    // Log the user information
-                    info!("Authenticated user: {:?}", user);
-
                     HttpResponse::Ok()
                         .content_type(ContentType::html())
                         .body(format!(
