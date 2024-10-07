@@ -30,3 +30,4 @@ oauth2 = { version = "4.4.2", features = ["reqwest"] }
 actix-session = { version = "0.10.1", features = ["cookie-session"] }
 url = "2.5.2"
 futures = "0.3.30"
+actix-cors = "0.7.0"

@@ -5,6 +5,7 @@ TODOs:
 - [ ] Design & styling
 - [x] Better OAuth: protected routes
 - [x] Add collections API
+- [ ] Add a way to view, create, and add repos to collections
 - [x] Save user data to database
 - [x] Use user's access token to fetch commits instead of PAT
 - [ ] Use a real secret key in the cookie

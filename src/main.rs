@@ -1,11 +1,13 @@
 use crate::job_queue::JobQueue;
-// use crate::middleware::{AuthMiddleware, SessionLogger};
-use crate::middleware::AuthMiddleware;
+use crate::middleware::{AuthMiddleware, SessionLogger};
+// use crate::middleware::AuthMiddleware;
+use actix_cors::Cors;
 use actix_files as fs;
 use actix_files::NamedFile;
 use actix_session::Session;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::cookie::Key;
+use actix_web::http::header;
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer};
 use error::AppError;
 use github_oauth::{create_client, github_callback, login, logout, protected};
@@ -50,6 +52,7 @@ impl AppState {
             .map_err(|_| AppError::Unauthorized("No GitHub token found".into()))?
             .ok_or_else(|| AppError::Unauthorized("No GitHub token found".into()))?;
 
+        info!("GitHub token: {}", token);
         Octocrab::builder()
             .personal_token(token)
             .build()
@@ -88,8 +91,16 @@ async fn main() -> io::Result<()> {
     info!("Starting server at http://localhost:8080");
 
     HttpServer::new(move || {
+        let cors = Cors::default()
+            .allowed_origin("http://localhost:3000")
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+            .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
+            .allowed_header(header::CONTENT_TYPE)
+            .max_age(3600);
+
         App::new()
-            // .wrap(SessionLogger)
+            .wrap(SessionLogger)
+            .wrap(cors)
             .app_data(app_state.clone())
             .app_data(web::Data::new(oauth_client.clone()))
             .wrap(SessionMiddleware::new(
