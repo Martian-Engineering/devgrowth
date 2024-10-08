@@ -1,25 +1,22 @@
 use crate::job_queue::JobQueue;
 use crate::middleware::{AuthMiddleware, SessionLogger};
-// use crate::middleware::AuthMiddleware;
 use actix_cors::Cors;
-use actix_files as fs;
-use actix_files::NamedFile;
 use actix_session::Session;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::cookie::Key;
 use actix_web::http::header;
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer};
 use error::AppError;
-use github_oauth::{create_client, github_callback, login, logout, protected};
+use github_oauth::{create_client, github_callback};
 use log::info;
 use oauth2::basic::BasicClient;
 use octocrab::Octocrab;
 use sqlx::postgres::PgPool;
 use std::io;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 mod account;
+mod auth;
 mod collection;
 mod commit;
 mod db;
@@ -60,16 +57,6 @@ impl AppState {
     }
 }
 
-async fn index() -> Result<NamedFile, actix_web::Error> {
-    let path: PathBuf = "src/frontend/index.html".parse().unwrap();
-    Ok(NamedFile::open(path)?)
-}
-
-async fn repository_page() -> Result<NamedFile, actix_web::Error> {
-    let path: PathBuf = "src/frontend/repository.html".parse().unwrap();
-    Ok(NamedFile::open(path)?)
-}
-
 #[actix_web::main]
 async fn main() -> io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
@@ -100,6 +87,7 @@ async fn main() -> io::Result<()> {
 
         App::new()
             .wrap(SessionLogger)
+            .wrap(AuthMiddleware)
             .wrap(cors)
             .app_data(app_state.clone())
             .app_data(web::Data::new(oauth_client.clone()))
@@ -109,13 +97,7 @@ async fn main() -> io::Result<()> {
             ))
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
-            .service(fs::Files::new("/static", "src/frontend").show_files_listing())
-            .service(login)
             .service(github_callback)
-            .service(protected)
-            .service(logout)
-            .route("/", web::get().to(index))
-            .route("/repository/{owner}/{name}", web::get().to(repository_page))
             .service(
                 web::scope("/api")
                     .wrap(AuthMiddleware)

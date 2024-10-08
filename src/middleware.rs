@@ -1,8 +1,8 @@
+use crate::auth::validate_token;
 use actix_session::SessionExt;
-use actix_web::body::{BoxBody, MessageBody};
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::http::Method;
-use actix_web::{Error, HttpResponse};
+use actix_web::error::ErrorUnauthorized;
+use actix_web::{Error, HttpMessage};
 use futures::future::{ok, Ready};
 use log::info;
 use serde_json::Value;
@@ -15,9 +15,9 @@ impl<S, B> Transform<S, ServiceRequest> for AuthMiddleware
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
-    B: MessageBody + 'static,
+    B: 'static,
 {
-    type Response = ServiceResponse<BoxBody>;
+    type Response = ServiceResponse<B>;
     type Error = Error;
     type InitError = ();
     type Transform = AuthMiddlewareService<S>;
@@ -36,42 +36,54 @@ impl<S, B> Service<ServiceRequest> for AuthMiddlewareService<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
-    B: MessageBody + 'static,
+    B: 'static,
 {
-    type Response = ServiceResponse<BoxBody>;
+    type Response = ServiceResponse<B>;
     type Error = Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let method = req.method().clone();
+        // List of paths that don't require authentication
+        let public_paths = vec!["/api/auth/signin", "/api/auth/callback"];
+        info!("ServiceRequest: {:?}", req);
 
-        // Only check authentication for POST, PUT, DELETE methods
-        if method == Method::POST || method == Method::PUT || method == Method::DELETE {
-            let authenticated = req
-                .get_session()
-                .get::<i32>("account_id")
-                .map(|account_id| account_id.is_some())
-                .unwrap_or(false);
-
-            if !authenticated {
-                let (http_req, _payload) = req.into_parts();
-                let response = HttpResponse::Unauthorized().finish();
-                return Box::pin(async move {
-                    Ok(ServiceResponse::new(
-                        http_req,
-                        response.map_into_boxed_body(),
-                    ))
-                });
-            }
+        if public_paths
+            .iter()
+            .any(|&path| req.path().starts_with(path))
+        {
+            return Box::pin(self.service.call(req));
         }
-
-        let fut = self.service.call(req);
-        Box::pin(async move {
-            let res = fut.await?;
-            Ok(res.map_into_boxed_body())
-        })
+        let auth_header = req.headers().get("Authorization");
+        match auth_header {
+            Some(auth_value) => {
+                if let Ok(auth_str) = auth_value.to_str() {
+                    if auth_str.starts_with("Bearer ") {
+                        let token = &auth_str[7..];
+                        match validate_token(token) {
+                            Ok(claims) => {
+                                // Token is valid, you can use claims if needed
+                                req.extensions_mut().insert(claims);
+                                let fut = self.service.call(req);
+                                return Box::pin(async move {
+                                    let res = fut.await?;
+                                    Ok(res)
+                                });
+                            }
+                            Err(e) => {
+                                log::error!("Token validation error: {:?}", e);
+                                return Box::pin(
+                                    async move { Err(ErrorUnauthorized("Invalid token")) },
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            None => {}
+        }
+        Box::pin(async move { Err(ErrorUnauthorized("Missing or invalid Authorization header")) })
     }
 }
 

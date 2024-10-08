@@ -1,15 +1,24 @@
 use crate::account::upsert_account;
 use crate::error::AppError;
 use crate::AppState;
-use actix_session::Session;
-use actix_web::http::header::ContentType;
-use actix_web::{get, web, HttpRequest, HttpResponse, Responder};
+use actix_web::Result as ActixResult;
+use actix_web::{get, web, HttpRequest, HttpResponse};
+use chrono::{Duration, Utc};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use log::{error, info};
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use oauth2::{reqwest::async_http_client, AuthorizationCode, TokenResponse};
 use octocrab::Octocrab;
+use serde::{Deserialize, Serialize};
 use std::env;
 use url::Url;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String, // subject (user id)
+    exp: i64,    // expiration time
+    iat: i64,    // issued at
+}
 
 pub fn create_client() -> Result<BasicClient, AppError> {
     let client_id =
@@ -30,35 +39,12 @@ pub fn create_client() -> Result<BasicClient, AppError> {
     Ok(oauth_client)
 }
 
-#[get("/login")]
-async fn login(oauth_client: web::Data<BasicClient>) -> impl Responder {
-    let (auth_url, _csrf_state) = oauth_client
-        .authorize_url(oauth2::CsrfToken::new_random)
-        .add_extra_param("prompt", "consent")
-        .url();
-
-    HttpResponse::Found()
-        .append_header(("Location", auth_url.to_string()))
-        .finish()
-}
-
-#[get("/logout")]
-pub async fn logout(session: Session) -> impl Responder {
-    // Clear the session
-    session.clear();
-
-    HttpResponse::Found()
-        .append_header(("Location", "/login"))
-        .finish()
-}
-
 #[get("/auth/github/callback")]
 async fn github_callback(
     req: HttpRequest,
     oauth_client: web::Data<BasicClient>,
-    session: Session,
     state: web::Data<AppState>,
-) -> impl Responder {
+) -> ActixResult<HttpResponse> {
     // Extract the authorization code from the request
     let code = req.query_string();
     let parsed_url = Url::parse(&format!("http://localhost?{}", code)).unwrap();
@@ -67,123 +53,72 @@ async fn github_callback(
         .find(|(key, _)| key == "code")
         .map(|(_, value)| value.into_owned());
 
-    let code = match code {
-        Some(code) => code,
-        None => return HttpResponse::BadRequest().body("Missing authorization code"),
-    };
+    let code =
+        code.ok_or_else(|| actix_web::error::ErrorBadRequest("Missing authorization code"))?;
 
     // Exchange the code for an access token
     let token_result = oauth_client
         .exchange_code(AuthorizationCode::new(code.to_string()))
         .request_async(async_http_client)
-        .await;
+        .await
+        .map_err(|e| {
+            error!("Failed to exchange code: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to exchange code")
+        })?;
 
-    match token_result {
-        Ok(token) => {
-            let access_token = token.access_token().secret();
-            // Store the access token in the session
-            if let Err(e) = session.insert("github_token", access_token) {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Failed to store token: {}", e));
-            }
+    let access_token = token_result.access_token().secret();
 
-            // Create a new Octocrab instance with the user's access token
-            let user_octocrab = Octocrab::builder()
-                .personal_token(access_token.to_string())
-                .build()
-                .expect("Failed to create user Octocrab instance");
+    // Create a new Octocrab instance with the user's access token
+    let user_octocrab = Octocrab::builder()
+        .personal_token(access_token.to_string())
+        .build()
+        .map_err(|e| {
+            error!("Failed to create Octocrab instance: {}", e);
+            actix_web::error::ErrorInternalServerError("Failed to create GitHub client")
+        })?;
 
-            // Fetch the user's information
-            match user_octocrab.current().user().await {
-                Ok(user) => {
-                    match upsert_account(
-                        &state.db_pool,
-                        &user.login.to_string(),
-                        user.email.as_deref(),
-                    )
-                    .await
-                    {
-                        Ok(account_id) => {
-                            if let Err(e) = session.insert("account_id", account_id) {
-                                error!("Failed to store account_id in session: {}", e);
-                                return HttpResponse::InternalServerError()
-                                    .body("Failed to store account information");
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to upsert account in database: {}", e);
-                            return HttpResponse::InternalServerError()
-                                .body("Failed to update account information");
-                        }
-                    }
-                }
-                Err(e) => {
-                    info!("Failed to fetch account information: {}", e);
-                    return HttpResponse::InternalServerError()
-                        .body("Failed to fetch user information");
-                }
-            }
+    // Fetch the user's information
+    let user = user_octocrab.current().user().await.map_err(|e| {
+        info!("Failed to fetch account information: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to fetch user information")
+    })?;
 
-            // Redirect to a protected route or homepage
-            HttpResponse::Found()
-                .append_header(("Location", "/protected"))
-                .finish()
+    let account_id = upsert_account(
+        &state.db_pool,
+        &user.login.to_string(),
+        user.email.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        error!("Failed to upsert account in database: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to update account information")
+    })?;
+
+    // Generate JWT
+    let claims = Claims {
+        sub: account_id.to_string(),
+        exp: (Utc::now() + Duration::hours(24)).timestamp(),
+        iat: Utc::now().timestamp(),
+    };
+
+    let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(jwt_secret.as_ref()),
+    )
+    .map_err(|e| {
+        error!("Failed to generate JWT: {}", e);
+        actix_web::error::ErrorInternalServerError("Failed to generate token")
+    })?;
+
+    // Return the JWT to the client
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "token": token,
+        "user": {
+            "id": account_id,
+            "login": user.login,
+            "avatar_url": user.avatar_url,
         }
-        Err(e) => {
-            HttpResponse::InternalServerError().body(format!("Failed to exchange code: {}", e))
-        }
-    }
-}
-
-#[get("/protected")]
-async fn protected(session: Session) -> impl Responder {
-    match session.get::<String>("github_token") {
-        Ok(Some(token)) => {
-            // Create a new Octocrab instance with the user's access token
-            let user_octocrab = Octocrab::builder()
-                .personal_token(token.to_string())
-                .build()
-                .expect("Failed to create user Octocrab instance");
-
-            // Fetch the user's information
-            match user_octocrab.current().user().await {
-                Ok(user) => {
-                    HttpResponse::Ok()
-                        .content_type(ContentType::html())
-                        .body(format!(
-                            r#"
-                            <!DOCTYPE html>
-                            <html lang="en">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>Protected Content</title>
-                            </head>
-                            <body>
-                                <h1>Protected Content</h1>
-                                <h2>User Information</h2>
-                                <p>Username: {}</p>
-                                <p>Email: {}</p>
-                                <img src="{}" alt="Avatar" style="width:100px;height:100px;">
-                                <br>
-                                <a href='/logout'>Logout</a>
-                            </body>
-                            </html>
-                            "#,
-                            user.login,
-                            user.email.unwrap_or_else(|| "N/A".to_string()),
-                            user.avatar_url
-                        ))
-                }
-                Err(e) => {
-                    info!("Failed to fetch user information: {}", e);
-                    HttpResponse::InternalServerError().body("Failed to fetch user information")
-                }
-            }
-        }
-        Ok(None) => HttpResponse::Found()
-            .append_header(("Location", "/login"))
-            .finish(),
-        Err(_) => HttpResponse::InternalServerError().body("Failed to get session data"),
-    }
+    })))
 }
