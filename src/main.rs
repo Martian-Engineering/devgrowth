@@ -1,3 +1,4 @@
+use crate::auth::logout;
 use crate::job_queue::JobQueue;
 use crate::middleware::{AuthMiddleware, SessionLogger};
 use actix_cors::Cors;
@@ -70,7 +71,7 @@ async fn main() -> io::Result<()> {
 
     // Create the application state
     let app_state = web::Data::new(AppState {
-        db_pool: pool,
+        db_pool: pool.clone(),
         job_queue,
         oauth_client: oauth_client.clone(),
     });
@@ -81,13 +82,18 @@ async fn main() -> io::Result<()> {
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
-            .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
-            .allowed_header(header::CONTENT_TYPE)
-            .max_age(3600);
+            .allowed_headers(vec![
+                header::AUTHORIZATION,
+                header::ACCEPT,
+                header::CONTENT_TYPE,
+            ])
+            .max_age(3600)
+            .supports_credentials();
+
+        let auth_middleware = AuthMiddleware::new(web::Data::new(pool.clone()));
 
         App::new()
-            .wrap(SessionLogger)
-            .wrap(AuthMiddleware)
+            // .wrap(SessionLogger)
             .wrap(cors)
             .app_data(app_state.clone())
             .app_data(web::Data::new(oauth_client.clone()))
@@ -100,8 +106,9 @@ async fn main() -> io::Result<()> {
             .service(github_callback)
             .service(
                 web::scope("/api")
-                    .wrap(AuthMiddleware)
+                    .wrap(auth_middleware.clone())
                     .default_service(web::to(|| HttpResponse::NotFound()))
+                    .service(web::scope("/auth").route("/logout", web::post().to(logout)))
                     .service(
                         web::scope("/repositories")
                             .route("", web::get().to(list_repositories))

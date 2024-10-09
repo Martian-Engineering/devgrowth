@@ -1,20 +1,37 @@
-use crate::auth::validate_token;
+use crate::account::upsert_account;
+use crate::auth::{validate_token, Claims};
 use actix_session::SessionExt;
-use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::error::ErrorUnauthorized;
-use actix_web::{Error, HttpMessage};
-use futures::future::{ok, Ready};
+use actix_web::http::header;
+use actix_web::http::header::HeaderValue;
+use actix_web::web;
+use actix_web::{
+    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
+    error::{ErrorInternalServerError, ErrorUnauthorized},
+    Error, HttpMessage,
+};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use log::info;
 use serde_json::Value;
-use std::future::Future;
+use sqlx::postgres::PgPool;
+use std::cell::RefCell;
+use std::future::{ready, Future, Ready};
 use std::pin::Pin;
+use std::rc::Rc;
 
-pub struct AuthMiddleware;
+#[derive(Clone)]
+pub struct AuthMiddleware {
+    pool: web::Data<PgPool>,
+}
+
+impl AuthMiddleware {
+    pub fn new(pool: web::Data<PgPool>) -> Self {
+        Self { pool }
+    }
+}
 
 impl<S, B> Transform<S, ServiceRequest> for AuthMiddleware
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-    S::Future: 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     B: 'static,
 {
     type Response = ServiceResponse<B>;
@@ -24,18 +41,21 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ok(AuthMiddlewareService { service })
+        ready(Ok(AuthMiddlewareService {
+            service: Rc::new(RefCell::new(service)),
+            pool: self.pool.clone(),
+        }))
     }
 }
 
 pub struct AuthMiddlewareService<S> {
-    service: S,
+    service: Rc<RefCell<S>>,
+    pool: web::Data<PgPool>,
 }
 
 impl<S, B> Service<ServiceRequest> for AuthMiddlewareService<S>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-    S::Future: 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     B: 'static,
 {
     type Response = ServiceResponse<B>;
@@ -45,45 +65,94 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        // List of paths that don't require authentication
-        let public_paths = vec!["/api/auth/signin", "/api/auth/callback"];
-        info!("ServiceRequest: {:?}", req);
+        let srv = self.service.clone();
+        let pool = self.pool.clone();
 
-        if public_paths
-            .iter()
-            .any(|&path| req.path().starts_with(path))
-        {
-            return Box::pin(self.service.call(req));
+        Box::pin(async move {
+            let token = match Self::extract_token(&req) {
+                Ok(token) => token,
+                Err(e) => return Err(e),
+            };
+
+            let claims = match validate_token(&token) {
+                Ok(claims) => claims,
+                Err(e) => {
+                    log::error!("Token validation error: {:?}", e);
+                    return Err(ErrorUnauthorized("Invalid token"));
+                }
+            };
+
+            let (claims, new_token) = Self::handle_user_creation(claims, &pool).await?;
+            req.extensions_mut().insert(claims);
+
+            let mut res = srv.borrow_mut().call(req).await?;
+
+            if let Some(token) = new_token {
+                res.headers_mut().insert(
+                    header::AUTHORIZATION,
+                    HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+                );
+            }
+
+            Ok(res)
+        })
+    }
+}
+
+impl<S> AuthMiddlewareService<S> {
+    fn extract_token(req: &ServiceRequest) -> Result<String, Error> {
+        let auth_header = req
+            .headers()
+            .get("Authorization")
+            .ok_or_else(|| ErrorUnauthorized("Missing Authorization header"))?;
+
+        let auth_str = auth_header
+            .to_str()
+            .map_err(|_| ErrorUnauthorized("Invalid Authorization header"))?;
+
+        if !auth_str.starts_with("Bearer ") {
+            return Err(ErrorUnauthorized("Invalid Authorization header format"));
         }
-        let auth_header = req.headers().get("Authorization");
-        match auth_header {
-            Some(auth_value) => {
-                if let Ok(auth_str) = auth_value.to_str() {
-                    if auth_str.starts_with("Bearer ") {
-                        let token = &auth_str[7..];
-                        match validate_token(token) {
-                            Ok(claims) => {
-                                // Token is valid, you can use claims if needed
-                                req.extensions_mut().insert(claims);
-                                let fut = self.service.call(req);
-                                return Box::pin(async move {
-                                    let res = fut.await?;
-                                    Ok(res)
-                                });
-                            }
-                            Err(e) => {
-                                log::error!("Token validation error: {:?}", e);
-                                return Box::pin(
-                                    async move { Err(ErrorUnauthorized("Invalid token")) },
-                                );
-                            }
-                        }
+
+        Ok(auth_str[7..].to_string())
+    }
+
+    async fn handle_user_creation(
+        mut claims: Claims,
+        pool: &web::Data<PgPool>,
+    ) -> Result<(Claims, Option<String>), Error> {
+        info!("Claims: {:?}", claims);
+        let mut new_token = None;
+        if claims.db_id.is_none() {
+            claims = match upsert_account(pool, &claims.id.to_string(), Some(&claims.email)).await {
+                Ok(db_id) => {
+                    info!("User created/updated with db_id: {}", db_id);
+                    Claims {
+                        db_id: Some(db_id),
+                        ..claims
                     }
                 }
-            }
-            None => {}
+                Err(e) => {
+                    log::error!("Failed to create/update user: {:?}", e);
+                    return Err(ErrorInternalServerError("User creation failed"));
+                }
+            };
+
+            // Generate new token with db_id
+            new_token = Some(
+                encode(
+                    &Header::default(),
+                    &claims,
+                    &EncodingKey::from_secret(std::env::var("JWT_SECRET").unwrap().as_bytes()),
+                )
+                .map_err(|e| {
+                    log::error!("Failed to generate new token: {:?}", e);
+                    ErrorInternalServerError("Token generation failed")
+                })?,
+            );
         }
-        Box::pin(async move { Err(ErrorUnauthorized("Missing or invalid Authorization header")) })
+
+        Ok((claims, new_token))
     }
 }
 
@@ -104,7 +173,7 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ok(SessionLoggerMiddleware { service })
+        ready(Ok(SessionLoggerMiddleware { service }))
     }
 }
 
