@@ -3,12 +3,10 @@ use crate::job_queue::JobQueue;
 use crate::middleware::{AuthMiddleware, SessionLogger};
 use actix_cors::Cors;
 use actix_session::Session;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::cookie::Key;
 use actix_web::http::header;
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer};
 use error::AppError;
-use github_oauth::{create_client, github_callback};
+use github_oauth::create_client;
 use log::info;
 use oauth2::basic::BasicClient;
 use octocrab::Octocrab;
@@ -97,13 +95,8 @@ async fn main() -> io::Result<()> {
             .wrap(cors)
             .app_data(app_state.clone())
             .app_data(web::Data::new(oauth_client.clone()))
-            .wrap(SessionMiddleware::new(
-                CookieSessionStore::default(),
-                Key::from(&[0; 64]), // TODO: use a real secret key in production
-            ))
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
-            .service(github_callback)
             .service(
                 web::scope("/api")
                     .wrap(auth_middleware.clone())
