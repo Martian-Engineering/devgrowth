@@ -2,14 +2,9 @@ use crate::auth::logout;
 use crate::job_queue::JobQueue;
 use crate::middleware::{AuthMiddleware, SessionLogger};
 use actix_cors::Cors;
-use actix_session::Session;
 use actix_web::http::header;
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer};
-use error::AppError;
-use github_oauth::create_client;
 use log::info;
-use oauth2::basic::BasicClient;
-use octocrab::Octocrab;
 use sqlx::postgres::PgPool;
 use std::io;
 use std::sync::Arc;
@@ -20,7 +15,7 @@ mod collection;
 mod commit;
 mod db;
 mod error;
-mod github_oauth;
+mod github;
 mod job_processor;
 mod job_queue;
 mod middleware;
@@ -38,22 +33,6 @@ use repository::{
 pub struct AppState {
     pub db_pool: PgPool,
     pub job_queue: Arc<JobQueue>,
-    pub oauth_client: BasicClient,
-}
-
-impl AppState {
-    pub fn get_github_client(&self, session: &Session) -> Result<Octocrab, AppError> {
-        let token = session
-            .get::<String>("github_token")
-            .map_err(|_| AppError::Unauthorized("No GitHub token found".into()))?
-            .ok_or_else(|| AppError::Unauthorized("No GitHub token found".into()))?;
-
-        info!("GitHub token: {}", token);
-        Octocrab::builder()
-            .personal_token(token)
-            .build()
-            .map_err(|e| AppError::GitHub(e))
-    }
 }
 
 #[actix_web::main]
@@ -65,13 +44,10 @@ async fn main() -> io::Result<()> {
 
     tokio::spawn(job_processor::process_jobs(job_queue.clone(), pool.clone()));
 
-    let oauth_client = create_client().expect("Failed to create OAuth client");
-
     // Create the application state
     let app_state = web::Data::new(AppState {
         db_pool: pool.clone(),
         job_queue,
-        oauth_client: oauth_client.clone(),
     });
 
     info!("Starting server at http://localhost:8080");
@@ -94,7 +70,6 @@ async fn main() -> io::Result<()> {
             // .wrap(SessionLogger)
             .wrap(cors)
             .app_data(app_state.clone())
-            .app_data(web::Data::new(oauth_client.clone()))
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .service(

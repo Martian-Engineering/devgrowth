@@ -1,9 +1,9 @@
 use crate::error::AppError;
+use crate::github::{get_github_client, get_github_token};
 use crate::job_queue::Job;
 use crate::AppState;
-use actix_session::Session;
 use actix_web::web::Query;
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use chrono::{DateTime, Utc};
 use log::{error, info};
 use octocrab::Octocrab;
@@ -157,20 +157,45 @@ async fn fetch_repositories(
     .await
 }
 
+async fn write_repository(
+    pool: &PgPool,
+    new_repo: NewRepository,
+) -> Result<Repository, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO repository (name, owner)
+        VALUES ($1, $2)
+        RETURNING repository_id, name, owner, indexed_at, created_at, updated_at
+        "#,
+        new_repo.name,
+        new_repo.owner
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Repository {
+        id: row.repository_id,
+        name: row.name,
+        owner: row.owner,
+        indexed_at: row.indexed_at,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
+}
+
 pub async fn create_repository(
     state: web::Data<AppState>,
     new_repo: web::Json<NewRepository>,
-    session: Session,
+    req: HttpRequest,
 ) -> impl Responder {
     let new_repo = new_repo.into_inner();
-
-    match state.get_github_client(&session) {
+    match get_github_client(&req) {
         Ok(github_client) => {
             match repository_exists(&github_client, &new_repo.owner, &new_repo.name).await {
                 Ok(true) => match write_repository(&state.db_pool, new_repo).await {
                     Ok(repo) => {
-                        let github_token = match session.get::<String>("github_token") {
-                            Ok(token) => token.unwrap_or_default(),
+                        let github_token = match get_github_token(&req) {
+                            Ok(token) => token,
                             Err(e) => {
                                 error!("Failed to get github_token from session: {:?}", e);
                                 return HttpResponse::InternalServerError().finish();
@@ -217,49 +242,23 @@ pub async fn create_repository(
     }
 }
 
-async fn write_repository(
-    pool: &PgPool,
-    new_repo: NewRepository,
-) -> Result<Repository, sqlx::Error> {
-    let row = sqlx::query!(
-        r#"
-        INSERT INTO repository (name, owner)
-        VALUES ($1, $2)
-        RETURNING repository_id, name, owner, indexed_at, created_at, updated_at
-        "#,
-        new_repo.name,
-        new_repo.owner
-    )
-    .fetch_one(pool)
-    .await?;
-
-    Ok(Repository {
-        id: row.repository_id,
-        name: row.name,
-        owner: row.owner,
-        indexed_at: row.indexed_at,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    })
-}
-
 pub async fn sync_repository(
     state: web::Data<AppState>,
     path: web::Path<(String, String)>,
-    session: Session,
+    req: HttpRequest,
 ) -> impl Responder {
     let (owner, name) = path.into_inner();
 
+    let github_token = match get_github_token(&req) {
+        Ok(token) => token,
+        Err(_) => {
+            error!("Failed to get access token from claims");
+            return HttpResponse::Unauthorized().finish();
+        }
+    };
+
     match get_repository_id(&state.db_pool, &owner, &name).await {
         Ok(Some(repository_id)) => {
-            let github_token = match session.get::<String>("github_token") {
-                Ok(token) => token.unwrap_or_default(),
-                Err(e) => {
-                    error!("Failed to get github_token from session: {:?}", e);
-                    return HttpResponse::InternalServerError().finish();
-                }
-            };
-
             let job = Job {
                 repository_id,
                 owner: owner.clone(),

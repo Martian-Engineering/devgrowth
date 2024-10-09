@@ -121,7 +121,6 @@ impl<S> AuthMiddlewareService<S> {
         mut claims: Claims,
         pool: &web::Data<PgPool>,
     ) -> Result<(Claims, Option<String>), Error> {
-        info!("Claims: {:?}", claims);
         let mut new_token = None;
         if claims.db_id.is_none() {
             claims = match upsert_account(pool, &claims.id.to_string(), Some(&claims.email)).await {
