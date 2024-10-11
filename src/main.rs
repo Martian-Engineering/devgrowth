@@ -1,6 +1,7 @@
+use crate::account::get_profile_data;
 use crate::auth::logout;
 use crate::job_queue::JobQueue;
-use crate::middleware::{AuthMiddleware, SessionLogger};
+use crate::middleware::AuthMiddleware;
 use actix_cors::Cors;
 use actix_web::http::header;
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer};
@@ -109,6 +110,9 @@ async fn main() -> io::Result<()> {
                                //     "/{collection_id}/growth-accounting",
                                //     web::get().to(get_collection_growth_accounting),
                                // ),
+                    )
+                    .service(
+                        web::scope("/account").route("/profile", web::get().to(get_profile_data)),
                     ),
             )
     })

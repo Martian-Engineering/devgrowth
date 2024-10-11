@@ -340,15 +340,6 @@ async fn fetch_growth_accounting(
 ) -> Result<Vec<GrowthAccountingResult>, sqlx::Error> {
     let query = r#"
         WITH dau AS (
-            -- This part of the query can be pretty much anything.
-            -- The only requirement is that it have three columns:
-            --   dt, user_id, inc_amt
-            -- Where dt is a date and user_id is some unique identifier for a user.
-            -- Each dt-user_id pair should be unique in this table.
-            -- inc_amt represents the amount of value that this user created on dt.
-            -- The most common case is
-            --   inc_amt = incremental revenue from the user on dt
-            -- If you want to do L28 growth accounting, user inc_amt=1.
             SELECT
                 author AS user_id,
                 date_trunc('day',
