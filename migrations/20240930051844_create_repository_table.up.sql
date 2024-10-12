@@ -1,6 +1,6 @@
 -- Add migration script here
 CREATE TABLE repository (
-    repository_id SERIAL PRIMARY KEY,
+    repository_id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     owner TEXT NOT NULL,
     indexed_at TIMESTAMP WITH TIME ZONE,

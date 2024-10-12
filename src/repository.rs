@@ -13,7 +13,7 @@ use sqlx::postgres::PgPool;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Repository {
-    pub id: i32,
+    pub repository_id: i32,
     pub name: String,
     pub owner: String,
     pub indexed_at: Option<DateTime<Utc>>,
@@ -23,6 +23,7 @@ pub struct Repository {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NewRepository {
+    pub id: Option<i32>,
     pub name: String,
     pub owner: String,
 }
@@ -35,7 +36,7 @@ pub struct RepositoryListQuery {
 
 #[derive(Serialize)]
 pub struct RepositoryMetadata {
-    id: i32,
+    repository_id: i32,
     owner: String,
     name: String,
     commit_count: i64,
@@ -81,7 +82,7 @@ async fn fetch_repository_metadata(
         RepositoryMetadata,
         r#"
         SELECT
-            r.repository_id as id,
+            r.repository_id,
             r.owner,
             r.name,
             COUNT(c.commit_id) as "commit_count!",
@@ -107,15 +108,35 @@ async fn fetch_repository_metadata(
     Ok(result)
 }
 
-pub async fn repository_exists(
+pub async fn get_repository_gh(
     octocrab: &Octocrab,
-    repo_owner: &str,
-    repo_name: &str,
-) -> Result<bool, AppError> {
-    match octocrab.repos(repo_owner, repo_name).get().await {
-        Ok(_) => Ok(true),
-        Err(octocrab::Error::GitHub { source, .. }) if source.message == "Not Found" => Ok(false),
-        Err(e) => Err(AppError::from(e)),
+    new_repo: &NewRepository,
+) -> Result<Option<octocrab::models::Repository>, AppError> {
+    match new_repo.id {
+        Some(id) => {
+            // Search by ID
+            match octocrab.repos_by_id(id as u64).get().await {
+                Ok(repo) => Ok(Some(repo)),
+                Err(octocrab::Error::GitHub { source, .. }) if source.message == "Not Found" => {
+                    Ok(None)
+                }
+                Err(e) => Err(AppError::from(e)),
+            }
+        }
+        None => {
+            // Search by owner and name
+            match octocrab
+                .repos(new_repo.owner.as_str(), new_repo.name.as_str())
+                .get()
+                .await
+            {
+                Ok(repo) => Ok(Some(repo)),
+                Err(octocrab::Error::GitHub { source, .. }) if source.message == "Not Found" => {
+                    Ok(None)
+                }
+                Err(e) => Err(AppError::from(e)),
+            }
+        }
     }
 }
 
@@ -145,7 +166,7 @@ async fn fetch_repositories(
     sqlx::query_as!(
         Repository,
         r#"
-        SELECT repository_id as id, name, owner, indexed_at, created_at, updated_at
+        SELECT repository_id, name, owner, indexed_at, created_at, updated_at
         FROM repository
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -159,22 +180,25 @@ async fn fetch_repositories(
 
 async fn write_repository(
     pool: &PgPool,
-    new_repo: NewRepository,
+    repository_id: i32,
+    repository_name: &str,
+    repository_owner: &str,
 ) -> Result<Repository, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        INSERT INTO repository (name, owner)
-        VALUES ($1, $2)
+        INSERT INTO repository (repository_id, name, owner)
+        VALUES ($1, $2, $3)
         RETURNING repository_id, name, owner, indexed_at, created_at, updated_at
         "#,
-        new_repo.name,
-        new_repo.owner
+        repository_id,
+        repository_name,
+        repository_owner,
     )
     .fetch_one(pool)
     .await?;
 
     Ok(Repository {
-        id: row.repository_id,
+        repository_id: row.repository_id,
         name: row.name,
         owner: row.owner,
         indexed_at: row.indexed_at,
@@ -183,60 +207,87 @@ async fn write_repository(
     })
 }
 
+pub async fn upsert_repository(
+    state: &AppState,
+    req: &HttpRequest,
+    new_repo: NewRepository,
+) -> Result<Repository, AppError> {
+    let pool = &state.db_pool;
+    if let Some(id) = new_repo.id {
+        if let Some(existing_repo) = get_repository_by_id(pool, id).await? {
+            return Ok(existing_repo);
+        }
+    }
+
+    let github_client = match get_github_client(&req) {
+        Ok(client) => client,
+        Err(_) => {
+            error!("Failed to get GitHub client from claims");
+            return Err(AppError::Unauthorized("User not authenticated".into()));
+        }
+    };
+
+    // If no id or repository not found, check GitHub
+    let gh_repo = get_repository_gh(&github_client, &new_repo).await?;
+
+    match gh_repo {
+        Some(repo) => {
+            // Repository exists on GitHub, create or update in the database
+            let repository = write_repository(
+                pool,
+                repo.id.0 as i32,
+                &repo.name,
+                &repo.owner.as_ref().map(|o| o.login.as_str()).unwrap_or(""),
+            )
+            .await?;
+
+            let github_token = match get_github_token(&req) {
+                Ok(token) => token,
+                Err(e) => {
+                    error!("Failed to get github_token from session: {:?}", e);
+                    return Err(AppError::Unauthorized("User not authenticated".into()));
+                }
+            };
+            let job = Job {
+                repository_id: repository.repository_id,
+                owner: repository.owner.clone(),
+                name: repository.name.clone(),
+                github_token,
+            };
+            state.job_queue.push(job).await;
+
+            Ok(repository)
+        }
+        None => Err(AppError::NotFound("Repository not found on GitHub".into())),
+    }
+}
+
+async fn get_repository_by_id(pool: &PgPool, id: i32) -> Result<Option<Repository>, sqlx::Error> {
+    sqlx::query_as!(
+        Repository,
+        r#"
+        SELECT repository_id, name, owner, indexed_at, created_at, updated_at
+        FROM repository
+        WHERE repository_id = $1
+        "#,
+        id
+    )
+    .fetch_optional(pool)
+    .await
+}
+
 pub async fn create_repository(
     state: web::Data<AppState>,
     new_repo: web::Json<NewRepository>,
     req: HttpRequest,
 ) -> impl Responder {
-    let new_repo = new_repo.into_inner();
-    match get_github_client(&req) {
-        Ok(github_client) => {
-            match repository_exists(&github_client, &new_repo.owner, &new_repo.name).await {
-                Ok(true) => match write_repository(&state.db_pool, new_repo).await {
-                    Ok(repo) => {
-                        let github_token = match get_github_token(&req) {
-                            Ok(token) => token,
-                            Err(e) => {
-                                error!("Failed to get github_token from session: {:?}", e);
-                                return HttpResponse::InternalServerError().finish();
-                            }
-                        };
-                        let job = Job {
-                            repository_id: repo.id,
-                            owner: repo.owner.clone(),
-                            name: repo.name.clone(),
-                            github_token,
-                        };
-                        state.job_queue.push(job).await;
-
-                        HttpResponse::Created().json(repo)
-                    }
-                    Err(e) => {
-                        if let Some(db_err) = e.as_database_error() {
-                            if db_err
-                                .constraint()
-                                .map_or(false, |c| c == "repository_name_owner_key")
-                            {
-                                return HttpResponse::Conflict()
-                                    .body("Repository already exists in the database");
-                            }
-                        }
-                        error!("Failed to create repository in database: {:?}", e);
-                        HttpResponse::InternalServerError().finish()
-                    }
-                },
-                Ok(false) => {
-                    error!("Repository does not exist on GitHub");
-                    HttpResponse::BadRequest().body("Repository does not exist on GitHub")
-                }
-                Err(e) => {
-                    error!("Failed to check repository existence: {:?}", e);
-                    HttpResponse::InternalServerError().finish()
-                }
-            }
+    match upsert_repository(&state, &req, new_repo.into_inner()).await {
+        Ok(repo) => HttpResponse::Created().json(repo),
+        Err(AppError::NotFound(_)) => {
+            HttpResponse::BadRequest().body("Repository does not exist on GitHub")
         }
         Err(e) => {
-            error!("Failed to create GitHub client: {:?}", e);
+            error!("Failed to create repository: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO collection_repository (collection_id, repository_id)\n                VALUES ($1, $2)\n                ON CONFLICT (collection_id, repository_id) DO NOTHING\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e8d5c11725e8ccf1bde0b629c6710ed0b15e6b5dda9b40e03f478de4b141c9cb"
+}

@@ -1,9 +1,11 @@
+use crate::auth_utils::get_account_id;
 use crate::error::AppError;
+use crate::repository::{upsert_repository, NewRepository};
 use crate::AppState;
-use actix_session::Session;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Serialize, Deserialize)]
 pub struct Collection {
@@ -11,6 +13,7 @@ pub struct Collection {
     owner_id: i32,
     name: String,
     description: Option<String>,
+    is_default: bool,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -29,18 +32,22 @@ pub struct UpdateCollection {
 
 pub async fn create_collection(
     state: web::Data<AppState>,
-    session: Session,
+    req: HttpRequest,
     collection: web::Json<CreateCollection>,
 ) -> Result<HttpResponse, AppError> {
-    let account_id = session
-        .get::<i32>("user_id")?
-        .ok_or_else(|| AppError::Unauthorized("User not logged in".into()))?;
+    let account_id = get_account_id(&req)?;
+    if collection.name.to_lowercase() == "default" {
+        return Err(AppError::BadRequest(
+            "Cannot create a new default collection".into(),
+        ));
+    }
+
     let result = sqlx::query_as!(
         Collection,
         r#"
         INSERT INTO collection (owner_id, name, description)
         VALUES ($1, $2, $3)
-        RETURNING collection_id, owner_id, name, description, created_at, updated_at
+        RETURNING collection_id, owner_id, name, description, is_default, created_at, updated_at
         "#,
         account_id,
         collection.name,
@@ -54,15 +61,14 @@ pub async fn create_collection(
 
 pub async fn get_collections(
     state: web::Data<AppState>,
-    session: Session,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
-    let account_id = session
-        .get::<i32>("user_id")?
-        .ok_or_else(|| AppError::Unauthorized("User not logged in".into()))?;
+    let account_id = get_account_id(&req)?;
+
     let collections = sqlx::query_as!(
         Collection,
         r#"
-        SELECT collection_id, owner_id, name, description, created_at, updated_at
+        SELECT collection_id, owner_id, name, description, is_default, created_at, updated_at
         FROM collection
         WHERE owner_id = $1
         "#,
@@ -81,7 +87,7 @@ pub async fn get_collection(
     let collection = sqlx::query_as!(
         Collection,
         r#"
-        SELECT collection_id, owner_id, name, description, created_at, updated_at
+        SELECT collection_id, owner_id, name, description, is_default, created_at, updated_at
         FROM collection
         WHERE collection_id = $1
         "#,
@@ -98,20 +104,18 @@ pub async fn get_collection(
 
 pub async fn update_collection(
     state: web::Data<AppState>,
-    session: Session,
+    req: HttpRequest,
     collection_id: web::Path<i32>,
     collection: web::Json<UpdateCollection>,
 ) -> Result<HttpResponse, AppError> {
-    let account_id = session
-        .get::<i32>("user_id")?
-        .ok_or_else(|| AppError::Unauthorized("User not logged in".into()))?;
+    let account_id = get_account_id(&req)?;
 
     let collection_id = collection_id.into_inner();
 
     // Check if the collection belongs to the user
     let existing_collection = sqlx::query!(
         r#"
-        SELECT owner_id FROM collection
+        SELECT owner_id, is_default FROM collection
         WHERE collection_id = $1
         "#,
         collection_id
@@ -121,6 +125,12 @@ pub async fn update_collection(
 
     match existing_collection {
         Some(existing) if existing.owner_id == account_id => {
+            if existing.is_default {
+                return Err(AppError::BadRequest(
+                    "Cannot modify the default collection".into(),
+                ));
+            }
+
             // Update the collection
             let updated_collection = sqlx::query_as!(
                 Collection,
@@ -130,7 +140,7 @@ pub async fn update_collection(
                     description = COALESCE($2, description),
                     updated_at = NOW()
                 WHERE collection_id = $3
-                RETURNING collection_id, owner_id, name, description, created_at, updated_at
+                RETURNING collection_id, owner_id, name, description, is_default, created_at, updated_at
                 "#,
                 collection.name,
                 collection.description,
@@ -150,19 +160,17 @@ pub async fn update_collection(
 
 pub async fn delete_collection(
     state: web::Data<AppState>,
-    session: Session,
+    req: HttpRequest,
     collection_id: web::Path<i32>,
 ) -> Result<HttpResponse, AppError> {
-    let account_id = session
-        .get::<i32>("user_id")?
-        .ok_or_else(|| AppError::Unauthorized("User not logged in".into()))?;
+    let account_id = get_account_id(&req)?;
 
     let collection_id = collection_id.into_inner();
 
     // Check if the collection belongs to the user
     let collection = sqlx::query!(
         r#"
-        SELECT owner_id FROM collection
+        SELECT owner_id, is_default FROM collection
         WHERE collection_id = $1
         "#,
         collection_id
@@ -173,6 +181,11 @@ pub async fn delete_collection(
     match collection {
         Some(collection) if collection.owner_id == account_id => {
             // Delete the collection
+            if collection.is_default {
+                return Err(AppError::BadRequest(
+                    "Cannot delete the default collection".into(),
+                ));
+            }
             sqlx::query!(
                 r#"
                 DELETE FROM collection
@@ -194,19 +207,16 @@ pub async fn delete_collection(
 
 pub async fn add_repository_to_collection(
     state: web::Data<AppState>,
-    session: Session,
+    req: HttpRequest,
     path: web::Path<(i32, i32)>,
 ) -> Result<HttpResponse, AppError> {
-    let account_id = session
-        .get::<i32>("user_id")?
-        .ok_or_else(|| AppError::Unauthorized("User not logged in".into()))?;
-
+    let account_id = get_account_id(&req)?;
     let (collection_id, repository_id) = path.into_inner();
 
     // Check if the collection belongs to the user
     let collection = sqlx::query!(
         r#"
-        SELECT owner_id FROM collection
+        SELECT owner_id, is_default FROM collection
         WHERE collection_id = $1
         "#,
         collection_id
@@ -214,45 +224,70 @@ pub async fn add_repository_to_collection(
     .fetch_optional(&state.db_pool)
     .await?;
 
-    match collection {
-        Some(collection) if collection.owner_id == account_id => {
-            // Add the repository to the collection
-            sqlx::query!(
-                r#"
-                INSERT INTO collection_repository (collection_id, repository_id)
-                VALUES ($1, $2)
-                ON CONFLICT (collection_id, repository_id) DO NOTHING
-                "#,
-                collection_id,
-                repository_id
-            )
-            .execute(&state.db_pool)
-            .await?;
-
-            Ok(HttpResponse::Created().finish())
+    if let Some(collection) = collection {
+        if collection.owner_id != account_id {
+            return Err(AppError::Unauthorized(
+                "You do not own this collection".into(),
+            ));
         }
-        Some(_) => Err(AppError::Unauthorized(
-            "You do not own this collection".into(),
-        )),
-        None => Ok(HttpResponse::NotFound().finish()),
+    } else {
+        return Ok(HttpResponse::NotFound().finish());
+    }
+
+    // Create a NewRepository with just the ID
+    let new_repo = NewRepository {
+        id: Some(repository_id),
+        name: String::new(), // These will be filled by upsert_repository if needed
+        owner: String::new(),
+    };
+
+    let repository = upsert_repository(&state, &req, new_repo).await?;
+
+    // Add the repository to the collection
+
+    match sqlx::query!(
+        r#"
+        INSERT INTO collection_repository (collection_id, repository_id)
+        VALUES ($1, $2)
+        ON CONFLICT (collection_id, repository_id) DO NOTHING
+        "#,
+        collection_id,
+        repository_id
+    )
+    .execute(&state.db_pool)
+    .await
+    {
+        Ok(result) => {
+            if result.rows_affected() > 0 {
+                Ok(HttpResponse::Created().json(json!({
+                    "message": "Repository added to collection",
+                    "repository": repository
+                })))
+            } else {
+                Ok(HttpResponse::Ok()
+                    .json(json!({ "message": "Repository already in collection" })))
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to add repository to collection {:?}", e);
+            Err(AppError::InternalServerError(format!(
+                "Failed to add repository to collection: {}",
+                e
+            )))
+        }
     }
 }
 
 pub async fn remove_repository_from_collection(
     state: web::Data<AppState>,
-    session: Session,
+    req: HttpRequest,
     path: web::Path<(i32, i32)>,
 ) -> Result<HttpResponse, AppError> {
-    let account_id = session
-        .get::<i32>("user_id")?
-        .ok_or_else(|| AppError::Unauthorized("User not logged in".into()))?;
-
+    let account_id = get_account_id(&req)?;
     let (collection_id, repository_id) = path.into_inner();
-
-    // Check if the collection belongs to the user
     let collection = sqlx::query!(
         r#"
-        SELECT owner_id FROM collection
+        SELECT owner_id, is_default FROM collection
         WHERE collection_id = $1
         "#,
         collection_id
@@ -262,7 +297,6 @@ pub async fn remove_repository_from_collection(
 
     match collection {
         Some(collection) if collection.owner_id == account_id => {
-            // Remove the repository from the collection
             let result = sqlx::query!(
                 r#"
                 DELETE FROM collection_repository

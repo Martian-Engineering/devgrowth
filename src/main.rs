@@ -1,7 +1,7 @@
 use crate::account::get_profile_data;
 use crate::auth::logout;
 use crate::job_queue::JobQueue;
-use crate::middleware::AuthMiddleware;
+use crate::middleware::{AuthMiddleware, SessionLogger};
 use actix_cors::Cors;
 use actix_web::http::header;
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer};
@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 mod account;
 mod auth;
+mod auth_utils;
 mod collection;
 mod commit;
 mod db;
@@ -100,7 +101,7 @@ async fn main() -> io::Result<()> {
                                     .route(web::delete().to(delete_collection)),
                             )
                             .route(
-                                "/{collection_id}/repositories",
+                                "/{collection_id}/repositories/{repository_id}",
                                 web::post().to(add_repository_to_collection),
                             )
                             .route(

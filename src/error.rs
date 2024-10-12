@@ -21,11 +21,20 @@ pub enum AppError {
     #[error("Environment error: {0}")]
     Environment(String),
 
+    #[error("Bad Request: {0}")]
+    BadRequest(String),
+
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
     #[error("Session error: {0}")]
     Session(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    #[error("Internal server error: {0}")]
+    InternalServerError(String),
 }
 
 impl From<SessionGetError> for AppError {
@@ -42,8 +51,11 @@ impl ResponseError for AppError {
             AppError::GitHub(_) => StatusCode::BAD_GATEWAY,
             AppError::Configuration(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Environment(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Session(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::InternalServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::NotFound(_) => StatusCode::NOT_FOUND,
         }
     }
 }

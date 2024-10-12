@@ -4,8 +4,10 @@ CREATE TABLE collection (
     owner_id INTEGER NOT NULL REFERENCES account(account_id),
     name VARCHAR(255) NOT NULL,
     description TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UNIQUE (owner_id, is_default),
     UNIQUE (owner_id, name)
 );
 

@@ -1,15 +1,37 @@
+use crate::auth_utils::get_account_id;
 use crate::error::AppError;
 use crate::github::get_github_client;
-use actix_web::{HttpRequest, HttpResponse};
-use log::info;
+use crate::AppState;
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
+use std::collections::HashMap;
+
+async fn create_default_collection(
+    tx: &mut Transaction<'_, Postgres>,
+    owner_id: i32,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        INSERT INTO collection (owner_id, name, description, is_default)
+        VALUES ($1, 'Default', 'Default collection', true)
+        ON CONFLICT (owner_id, is_default) DO NOTHING
+        "#,
+        owner_id
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
 
 pub async fn upsert_account(
     pool: &PgPool,
     github_id: &str,
     email: Option<&str>,
 ) -> Result<i32, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
     let result = sqlx::query!(
         r#"
         INSERT INTO account (github_id, email, last_login)
@@ -23,8 +45,13 @@ pub async fn upsert_account(
         github_id,
         email
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+
+    // Create default collection if it doesn't exist
+    create_default_collection(&mut tx, result.account_id).await?;
+
+    tx.commit().await?;
 
     Ok(result.account_id)
 }
@@ -35,6 +62,7 @@ pub struct ProfileData {
     name: String,
     email: String,
     starred_repositories: Vec<StarredRepo>,
+    repo_collections: HashMap<i32, Vec<i32>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -47,7 +75,37 @@ pub struct StarredRepo {
     stargazers_count: Option<u32>,
 }
 
-pub async fn get_profile_data(req: HttpRequest) -> Result<HttpResponse, AppError> {
+async fn get_repo_collections(
+    pool: &PgPool,
+    req: HttpRequest,
+) -> Result<HashMap<i32, Vec<i32>>, AppError> {
+    let account_id = get_account_id(&req)?;
+
+    let repo_collections = sqlx::query!(
+        r#"
+        SELECT cr.repository_id, ARRAY_AGG(cr.collection_id) as collection_ids
+        FROM collection_repository cr
+        JOIN collection c ON cr.collection_id = c.collection_id
+        WHERE c.owner_id = $1
+        GROUP BY cr.repository_id
+        "#,
+        account_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let result: HashMap<i32, Vec<i32>> = repo_collections
+        .into_iter()
+        .map(|row| (row.repository_id, row.collection_ids.unwrap_or_default()))
+        .collect();
+
+    return Ok(result);
+}
+
+pub async fn get_profile_data(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+) -> Result<HttpResponse, AppError> {
     let github_client = get_github_client(&req)?;
 
     // Fetch the authenticated user's information
@@ -74,11 +132,15 @@ pub async fn get_profile_data(req: HttpRequest) -> Result<HttpResponse, AppError
         })
         .collect();
 
+    let repo_collections: HashMap<i32, Vec<i32>> =
+        get_repo_collections(&state.db_pool, req).await?;
+
     let profile_data = ProfileData {
         github_id: user.id.to_string(),
         name: "Josh Lehman".to_string(), // user.name.unwrap_or_else(|| user.login.clone()),
         email: user.email.unwrap_or_default(),
         starred_repositories,
+        repo_collections,
     };
 
     Ok(HttpResponse::Ok().json(profile_data))
