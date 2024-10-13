@@ -71,3 +71,9 @@ impl From<backoff::Error<octocrab::Error>> for AppError {
         }
     }
 }
+
+impl From<actix_web::error::PayloadError> for AppError {
+    fn from(err: actix_web::error::PayloadError) -> Self {
+        AppError::BadRequest(format!("Payload error: {}", err))
+    }
+}

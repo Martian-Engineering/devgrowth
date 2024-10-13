@@ -53,16 +53,6 @@ export default function Home() {
     if (status === "authenticated") {
       // TODO: Implement fetch for starred repos and profile data (repoCollections) as separate endpoints
       // TODO: Optimistic update of UI
-      // setRepoCollections((prev) => {
-      //   const updatedCollections = prev[repoId] ? [...prev[repoId]] : [];
-      //   if (isInCollection) {
-      //     const index = updatedCollections.indexOf(collectionId);
-      //     if (index > -1) updatedCollections.splice(index, 1);
-      //   } else {
-      //     updatedCollections.push(collectionId);
-      //   }
-      //   return { ...prev, [repoId]: updatedCollections };
-      // });
       fetchProfileData();
     }
   }, [status]);

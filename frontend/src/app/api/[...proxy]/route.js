@@ -52,18 +52,28 @@ export async function handler(request) {
 
     const headers = new Headers(request.headers);
     headers.set("Cookie", cookieHeader);
-    headers.set("Content-Type", "application/json");
+    // headers.set("Content-Type", "application/json");
     headers.set("Authorization", `Bearer ${token}`);
 
+    const clonedRequest = request.clone();
+
     const fetchOptions = {
-      method: request.method,
+      method: clonedRequest.method,
       headers: headers,
       credentials: "include",
     };
 
+    // // Add the body for POST, PUT, and PATCH requests
+    if (["POST", "PUT", "PATCH"].includes(clonedRequest.method)) {
+      // Simply forward the body as-is
+      fetchOptions.body = clonedRequest.body;
+      fetchOptions.duplex = "half";
+    }
+
     const response = await fetch(targetUrl, fetchOptions);
 
     if (!response.ok) {
+      console.log(response);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 

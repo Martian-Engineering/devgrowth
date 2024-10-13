@@ -1,3 +1,4 @@
+// src/components/AddRepositoryForm.tsx
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,10 +7,12 @@ import { toast } from "@/hooks/use-toast";
 
 interface AddRepositoryFormProps {
   onRepositoryAdded: () => void;
+  collectionId: number;
 }
 
 export function AddRepositoryForm({
   onRepositoryAdded,
+  collectionId,
 }: AddRepositoryFormProps) {
   const [owner, setOwner] = useState("");
   const [name, setName] = useState("");
@@ -17,11 +20,16 @@ export function AddRepositoryForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch("/api/repositories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner, name }),
-      });
+      const response = await fetch(
+        `/api/collections/${collectionId}/repositories`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ owner, name }),
+        },
+      );
 
       if (!response.ok) {
         throw new Error("Failed to add repository");
@@ -29,7 +37,7 @@ export function AddRepositoryForm({
 
       toast({
         title: "Repository added",
-        description: `Successfully added ${owner}/${name}`,
+        description: `Successfully added ${owner}/${name} to the collection`,
       });
 
       setOwner("");

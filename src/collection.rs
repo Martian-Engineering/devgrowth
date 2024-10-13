@@ -1,9 +1,11 @@
 use crate::auth_utils::get_account_id;
 use crate::error::AppError;
-use crate::repository::{upsert_repository, NewRepository};
+use crate::repository::{upsert_repository, NewRepository, Repository};
 use crate::AppState;
+use actix_web::web::BytesMut;
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -84,6 +86,7 @@ pub async fn get_collection(
     state: web::Data<AppState>,
     collection_id: web::Path<i32>,
 ) -> Result<HttpResponse, AppError> {
+    let collection_id = collection_id.into_inner();
     let collection = sqlx::query_as!(
         Collection,
         r#"
@@ -91,13 +94,38 @@ pub async fn get_collection(
         FROM collection
         WHERE collection_id = $1
         "#,
-        collection_id.into_inner(),
+        collection_id,
     )
     .fetch_optional(&state.db_pool)
     .await?;
 
     match collection {
-        Some(c) => Ok(HttpResponse::Ok().json(c)),
+        Some(collection) => {
+            // If the collection exists, fetch its repositories
+            let repositories = sqlx::query_as!(
+                Repository,
+                r#"
+                SELECT r.repository_id, r.name, r.owner, r.indexed_at, r.created_at, r.updated_at
+                FROM repository r
+                JOIN collection_repository cr ON r.repository_id = cr.repository_id
+                WHERE cr.collection_id = $1
+                "#,
+                collection_id
+            )
+            .fetch_all(&state.db_pool)
+            .await?;
+
+            let mut collection_json = serde_json::to_value(collection).unwrap();
+            if let serde_json::Value::Object(ref mut obj) = collection_json {
+                obj.insert(
+                    "repositories".to_string(),
+                    serde_json::to_value(repositories).unwrap(),
+                );
+            }
+            let response = collection_json;
+
+            Ok(HttpResponse::Ok().json(response))
+        }
         None => Ok(HttpResponse::NotFound().finish()),
     }
 }
@@ -205,24 +233,34 @@ pub async fn delete_collection(
     }
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum AddRepositoryToCollectionRequest {
+    ById { repository_id: i32 },
+    ByNameAndOwner { name: String, owner: String },
+}
+
 pub async fn add_repository_to_collection(
     state: web::Data<AppState>,
     req: HttpRequest,
-    path: web::Path<(i32, i32)>,
+    mut payload: actix_web::web::Payload,
+    path: web::Path<i32>,
 ) -> Result<HttpResponse, AppError> {
     let account_id = get_account_id(&req)?;
-    let (collection_id, repository_id) = path.into_inner();
+    let collection_id = path.into_inner();
 
     // Check if the collection belongs to the user
     let collection = sqlx::query!(
         r#"
-        SELECT owner_id, is_default FROM collection
-        WHERE collection_id = $1
-        "#,
+            SELECT owner_id, is_default FROM collection
+            WHERE collection_id = $1
+            "#,
         collection_id
     )
     .fetch_optional(&state.db_pool)
     .await?;
+
+    log::info!("Collection: {:?}", collection);
 
     if let Some(collection) = collection {
         if collection.owner_id != account_id {
@@ -234,25 +272,50 @@ pub async fn add_repository_to_collection(
         return Ok(HttpResponse::NotFound().finish());
     }
 
-    // Create a NewRepository with just the ID
-    let new_repo = NewRepository {
-        id: Some(repository_id),
-        name: String::new(), // These will be filled by upsert_repository if needed
-        owner: String::new(),
+    let mut body = BytesMut::new();
+    while let Some(chunk) = payload.next().await {
+        let chunk = chunk?;
+        body.extend_from_slice(&chunk);
+    }
+
+    let str_body = std::str::from_utf8(&body).map_err(|e| {
+        log::error!("Error decoding body: {:?}", e);
+        AppError::BadRequest("Invalid UTF-8 sequence".to_string())
+    })?;
+
+    // Try to parse the body as JSON
+    let parsed_body: AddRepositoryToCollectionRequest =
+        serde_json::from_str(str_body).map_err(|e| {
+            log::error!("Error parsing JSON body: {:?}", e);
+            AppError::BadRequest("Invalid JSON".to_string())
+        })?;
+
+    // Create a NewRepository based on the input
+    let new_repo = match parsed_body {
+        AddRepositoryToCollectionRequest::ById { repository_id } => NewRepository {
+            id: Some(repository_id),
+            name: String::new(),
+            owner: String::new(),
+        },
+        AddRepositoryToCollectionRequest::ByNameAndOwner { name, owner } => NewRepository {
+            id: None,
+            name: name.clone(),
+            owner: owner.clone(),
+        },
     };
 
     let repository = upsert_repository(&state, &req, new_repo).await?;
+    println!("Repository: {:?}", repository);
 
     // Add the repository to the collection
-
     match sqlx::query!(
         r#"
-        INSERT INTO collection_repository (collection_id, repository_id)
-        VALUES ($1, $2)
-        ON CONFLICT (collection_id, repository_id) DO NOTHING
-        "#,
+            INSERT INTO collection_repository (collection_id, repository_id)
+            VALUES ($1, $2)
+            ON CONFLICT (collection_id, repository_id) DO NOTHING
+            "#,
         collection_id,
-        repository_id
+        repository.repository_id
     )
     .execute(&state.db_pool)
     .await
@@ -277,6 +340,95 @@ pub async fn add_repository_to_collection(
         }
     }
 }
+
+// pub async fn add_repository_to_collection(
+//     state: web::Data<AppState>,
+//     req: HttpRequest,
+//     path: web::Path<i32>,
+//     body: web::Json<AddRepositoryToCollectionRequest>,
+//     // body: web::Json<serde_json::Value>,
+// ) -> Result<HttpResponse, AppError> {
+//     log::info!("Entering add_repository_to_collection function");
+//     log::info!("Received body: {:?}", body);
+
+//     let account_id = get_account_id(&req)?;
+//     let collection_id = path.into_inner();
+
+//     // Check if the collection belongs to the user
+//     let collection = sqlx::query!(
+//         r#"
+//         SELECT owner_id, is_default FROM collection
+//         WHERE collection_id = $1
+//         "#,
+//         collection_id
+//     )
+//     .fetch_optional(&state.db_pool)
+//     .await?;
+
+//     log::info!("Collection: {:?}", collection);
+
+//     if let Some(collection) = collection {
+//         if collection.owner_id != account_id {
+//             return Err(AppError::Unauthorized(
+//                 "You do not own this collection".into(),
+//             ));
+//         }
+//     } else {
+//         return Ok(HttpResponse::NotFound().finish());
+//     }
+
+//     // Create a NewRepository based on the input
+//     let new_repo = match &body.0 {
+//         AddRepositoryToCollectionRequest::ById { repository_id } => NewRepository {
+//             id: Some(*repository_id),
+//             name: String::new(),
+//             owner: String::new(),
+//         },
+//         AddRepositoryToCollectionRequest::ByNameAndOwner { name, owner } => NewRepository {
+//             id: None,
+//             name: name.clone(),
+//             owner: owner.clone(),
+//         },
+//     };
+
+//     println!("New repo: {:?}", new_repo);
+
+//     let repository = upsert_repository(&state, &req, new_repo).await?;
+//     println!("Repository: {:?}", repository);
+
+//     // Add the repository to the collection
+//     match sqlx::query!(
+//         r#"
+//         INSERT INTO collection_repository (collection_id, repository_id)
+//         VALUES ($1, $2)
+//         ON CONFLICT (collection_id, repository_id) DO NOTHING
+//         "#,
+//         collection_id,
+//         repository.repository_id
+//     )
+//     .execute(&state.db_pool)
+//     .await
+//     {
+//         Ok(result) => {
+//             if result.rows_affected() > 0 {
+//                 Ok(HttpResponse::Created().json(json!({
+//                     "message": "Repository added to collection",
+//                     "repository": repository
+//                 })))
+//             } else {
+//                 Ok(HttpResponse::Ok()
+//                     .json(json!({ "message": "Repository already in collection" })))
+//             }
+//         }
+//         Err(e) => {
+//             log::error!("Failed to add repository to collection {:?}", e);
+//             Err(AppError::InternalServerError(format!(
+//                 "Failed to add repository to collection: {}",
+//                 e
+//             )))
+//         }
+//     }
+// }
 
 pub async fn remove_repository_from_collection(
     state: web::Data<AppState>,

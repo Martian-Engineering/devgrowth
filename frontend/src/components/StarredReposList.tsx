@@ -75,12 +75,19 @@ export function StarredReposList({
   ) => {
     try {
       const isInCollection = repoCollections[repoId]?.includes(collectionId);
-      const method = isInCollection ? "DELETE" : "POST";
-      const url = `/api/collections/${collectionId}/repositories/${repoId}`;
-
+      let method, url, body;
+      if (isInCollection) {
+        method = "DELETE";
+        url = `/api/collections/${collectionId}/repositories/${repoId}`;
+        body = null;
+      } else {
+        method = "POST";
+        url = `/api/collections/${collectionId}/repositories`;
+        body = JSON.stringify({ repository_id: repoId });
+      }
       const response = await fetch(url, {
         method,
-        credentials: "include",
+        body,
       });
 
       if (!response.ok) {

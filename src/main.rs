@@ -70,14 +70,17 @@ async fn main() -> io::Result<()> {
 
         App::new()
             // .wrap(SessionLogger)
-            .wrap(cors)
-            .app_data(app_state.clone())
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
+            .wrap(cors)
+            .app_data(app_state.clone())
             .service(
                 web::scope("/api")
                     .wrap(auth_middleware.clone())
-                    .default_service(web::to(|| HttpResponse::NotFound()))
+                    .default_service(web::to(|req: actix_web::HttpRequest| {
+                        log::error!("Unmatched request: {} {}", req.method(), req.path());
+                        HttpResponse::NotFound()
+                    }))
                     .service(web::scope("/auth").route("/logout", web::post().to(logout)))
                     .service(
                         web::scope("/repositories")
@@ -101,8 +104,15 @@ async fn main() -> io::Result<()> {
                                     .route(web::delete().to(delete_collection)),
                             )
                             .route(
-                                "/{collection_id}/repositories/{repository_id}",
+                                "/{collection_id}/repositories",
                                 web::post().to(add_repository_to_collection),
+                                // web::post().to(|req: actix_web::HttpRequest, payload: web::Payload| {
+                                //     log::error!("Received request at /collections/{{collection_id}}/repositories");
+                                //     log::error!("Request path: {:?}", req.path());
+                                //     log::error!("Request method: {:?}", req.method());
+                                //     log::error!("Request headers: {:?}", req.headers());
+                                //     add_repository_to_collection(req, payload)
+                                // }),
                             )
                             .route(
                                 "/{collection_id}/repositories/{repository_id}",

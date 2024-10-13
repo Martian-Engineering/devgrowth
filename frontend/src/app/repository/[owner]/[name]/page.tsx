@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { GrowthAccountingChart } from "@/components/GrowthAccountingChart";
+import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
 
 interface RepositoryMetadata {
   id: number;
