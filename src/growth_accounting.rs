@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use log::{error, info};
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use std::fmt;
