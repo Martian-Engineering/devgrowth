@@ -19,6 +19,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer } from "@/components/ui/chart";
 import { parse, format } from "date-fns";
 import "chartjs-adapter-date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { DateRange } from "react-day-picker";
+import { DatePickerWithRange } from "./ui/date-picker";
 
 ChartJS.register(
   CategoryScale,
@@ -41,6 +44,8 @@ interface GrowthAccountingData {
 
 interface GrowthAccountingChartProps {
   data: GrowthAccountingData[];
+  initialDateRange: DateRange;
+  onDateRangeChange: (range: DateRange | undefined) => void;
 }
 
 const chartConfig = {
@@ -62,9 +67,13 @@ const chartConfig = {
   },
 };
 
-export function GrowthAccountingChart({ data }: GrowthAccountingChartProps) {
+export function GrowthAccountingChart({
+  data,
+  initialDateRange,
+  onDateRangeChange,
+}: GrowthAccountingChartProps) {
   const chartData: ChartData<"bar"> = {
-    labels: data.map((item) => new Date(item.month).toISOString()),
+    labels: data.map((item) => item.month),
     datasets: [
       {
         label: chartConfig.new.label,
@@ -103,8 +112,11 @@ export function GrowthAccountingChart({ data }: GrowthAccountingChartProps) {
           },
         },
         ticks: {
-          callback: function (value) {
-            return format(value, "MM-yyyy");
+          source: "data",
+          autoSkip: false,
+          callback: function (value, index) {
+            const date = toZonedTime(new Date(data[index].month), "UTC");
+            return format(date, "MM-yyyy");
           },
         },
       },
@@ -117,10 +129,9 @@ export function GrowthAccountingChart({ data }: GrowthAccountingChartProps) {
         callbacks: {
           title: (context) => {
             const dateString = context[0].label as string;
-            const date = parse(
-              dateString,
-              "MMM d, yyyy, h:mm:ss a",
-              new Date(),
+            const date = toZonedTime(
+              parse(dateString, "MMM d, yyyy, h:mm:ss a", new Date()),
+              "UTC",
             );
             return format(date, "MMM yyyy");
           },
@@ -140,6 +151,11 @@ export function GrowthAccountingChart({ data }: GrowthAccountingChartProps) {
     <Card>
       <CardHeader>
         <CardTitle>Growth Accounting</CardTitle>
+        <DatePickerWithRange
+          className="w-[300px]"
+          initialDateRange={initialDateRange}
+          onDateRangeChange={onDateRangeChange}
+        />
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[400px]">

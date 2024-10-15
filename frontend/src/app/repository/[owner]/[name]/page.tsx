@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
+import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { DateRange } from "react-day-picker";
 
 interface RepositoryMetadata {
   id: number;
@@ -29,6 +32,31 @@ export default function RepositoryPage() {
   const params = useParams();
   const [metadata, setMetadata] = useState<RepositoryMetadata | null>(null);
   const [growthData, setGrowthData] = useState<GrowthAccountingData[]>([]);
+  const [filteredData, setFilteredData] = useState(growthData);
+
+  const today = new Date();
+  const lastMonth = addMonths(today, -1);
+  const initialDateRange = {
+    from: startOfMonth(subYears(lastMonth, 1)),
+    to: endOfMonth(lastMonth),
+  };
+
+  const handleDateRangeChange = useCallback(
+    (range: DateRange | undefined) => {
+      if (range?.from && range?.to) {
+        console.log(range.from, range.to);
+        const filtered = growthData.filter((item) => {
+          const itemDate = toZonedTime(new Date(item.month), "UTC");
+          return itemDate >= range.from && itemDate <= range.to;
+        });
+        console.log("filtered data", filtered);
+        setFilteredData(filtered);
+      } else {
+        setFilteredData(growthData);
+      }
+    },
+    [growthData],
+  );
 
   useEffect(() => {
     if (params.owner && params.name) {
@@ -38,7 +66,10 @@ export default function RepositoryPage() {
 
       fetch(`/api/repositories/${params.owner}/${params.name}/ga`)
         .then((response) => response.json())
-        .then((data) => setGrowthData(data));
+        .then((data) => {
+          setGrowthData(data);
+          setFilteredData(data);
+        });
     }
   }, [params.owner, params.name]);
 
@@ -72,7 +103,13 @@ export default function RepositoryPage() {
         </CardContent>
       </Card>
 
-      {growthData.length > 0 && <GrowthAccountingChart data={growthData} />}
+      {growthData.length > 0 && (
+        <GrowthAccountingChart
+          data={filteredData}
+          initialDateRange={initialDateRange}
+          onDateRangeChange={handleDateRangeChange}
+        />
+      )}
     </div>
   );
 }
