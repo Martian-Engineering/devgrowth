@@ -138,29 +138,25 @@ const MAU_GROWTH_ACCOUNTING: &str = r#"
         month ASC;
 "#;
 
-fn base_cte(query: &str) -> QueryBuilder<Postgres> {
-    let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("WITH dau AS (");
-
-    builder.push(query);
-    builder.push("),");
-    builder.push(BASE);
-
-    log::info!("base_cte query: {}", builder.sql());
-
-    builder
-}
-
 pub async fn mau_growth_accounting(
     pool: &PgPool,
     dau: String,
 ) -> Result<Vec<MAUGrowthAccountingResult>, sqlx::Error> {
-    let mut builder = base_cte(&dau);
-    builder.push(MAU_GROWTH_ACCOUNTING);
+    let q = format!(
+        r#"
+        WITH dau AS (
+            {}
+        ),
+        {}
+        {}
+        "#,
+        dau, BASE, MAU_GROWTH_ACCOUNTING
+    );
 
-    log::info!("Full Query: {}", builder.sql());
-
-    let query = builder.build_query_as::<MAUGrowthAccountingResult>();
-    match query.fetch_all(pool).await {
+    match sqlx::query_as::<_, MAUGrowthAccountingResult>(&q)
+        .fetch_all(pool)
+        .await
+    {
         Ok(results) => Ok(results),
         Err(e) => {
             log::error!("Error fetching MAU growth accounting results: {}", e);

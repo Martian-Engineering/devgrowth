@@ -26,7 +26,8 @@ mod repository;
 
 use collection::{
     add_repository_to_collection, create_collection, delete_collection, get_collection,
-    get_collections, remove_repository_from_collection, update_collection,
+    get_collection_growth_accounting, get_collections, remove_repository_from_collection,
+    update_collection,
 };
 use repository::{
     create_repository, get_repository_ga, get_repository_metadata, list_repositories,
@@ -118,10 +119,11 @@ async fn main() -> io::Result<()> {
                             .route(
                                 "/{collection_id}/repositories/{repository_id}",
                                 web::delete().to(remove_repository_from_collection),
-                            ), // .route(
-                               //     "/{collection_id}/growth-accounting",
-                               //     web::get().to(get_collection_growth_accounting),
-                               // ),
+                            )
+                            .route(
+                                "/{collection_id}/ga",
+                                web::get().to(get_collection_growth_accounting),
+                            ),
                     )
                     .service(
                         web::scope("/account").route("/profile", web::get().to(get_profile_data)),

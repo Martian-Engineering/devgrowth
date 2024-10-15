@@ -1,5 +1,6 @@
 use crate::auth_utils::get_account_id;
 use crate::error::AppError;
+use crate::growth_accounting::mau_growth_accounting;
 use crate::repository::{upsert_repository, NewRepository, Repository};
 use crate::AppState;
 use actix_web::web::BytesMut;
@@ -384,13 +385,53 @@ pub async fn remove_repository_from_collection(
     }
 }
 
-// pub async fn get_collection_growth_accounting(
-//     state: web::Data<AppState>,
-//     account_id: i32,
-//     collection_id: web::Path<i32>,
-// ) -> Result<HttpResponse, AppError> {
-//     // Implement the logic to calculate growth accounting for all repositories in the collection
-//     // This will involve joining the collections, collection_repositories, and commit tables,
-//     // and then performing the growth accounting calculations
-//     todo!()
-// }
+pub async fn get_collection_growth_accounting(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    collection_id: web::Path<i32>,
+) -> Result<HttpResponse, AppError> {
+    // Implement the logic to calculate growth accounting for all repositories in the collection
+    // This will involve joining the collections, collection_repositories, and commit tables,
+    // and then performing the growth accounting calculations
+    let account_id = get_account_id(&req)?;
+    let collection_id = collection_id.into_inner();
+    let collection = sqlx::query!(
+        r#"
+        SELECT owner_id, is_default FROM collection
+        WHERE collection_id = $1
+        "#,
+        collection_id
+    )
+    .fetch_optional(&state.db_pool)
+    .await?;
+
+    match collection {
+        Some(collection) if collection.owner_id == account_id => {
+            let dau_query = format!(
+                r#"
+                SELECT
+                    author AS user_id,
+                    date_trunc('day', "date") AS dt,
+                    count(*) AS inc_amt
+                FROM
+                    "commit" c
+                    LEFT JOIN collection_repository cr ON cr.repository_id = c.repository_id
+                WHERE
+                    cr.collection_id = {}
+                GROUP BY
+                    1,
+                    2
+                "#,
+                collection_id
+            );
+
+            let results = mau_growth_accounting(&state.db_pool, dau_query).await?;
+
+            Ok(HttpResponse::Ok().json(results))
+        }
+        Some(_) => Err(AppError::Unauthorized(
+            "You do not own this collection".into(),
+        )),
+        None => Ok(HttpResponse::NotFound().finish()),
+    }
+}

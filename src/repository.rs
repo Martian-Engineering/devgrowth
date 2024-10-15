@@ -10,7 +10,7 @@ use log::{error, info};
 use octocrab::Octocrab;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{postgres::PgPool, Postgres, QueryBuilder};
+use sqlx::postgres::PgPool;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Repository {

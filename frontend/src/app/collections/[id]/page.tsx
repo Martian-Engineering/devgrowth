@@ -1,7 +1,7 @@
 // src/app/collections/[id]/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,10 @@ import {
 } from "@/components/ui/dialog";
 import { AddRepositoryForm } from "@/components/AddRepositoryForm";
 import { toast } from "@/hooks/use-toast";
+import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
+import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { DateRange } from "react-day-picker";
 
 interface Collection {
   collection_id: number;
@@ -30,13 +34,47 @@ interface Repository {
   updated_at: Date;
 }
 
+interface GrowthAccountingData {
+  month: Date;
+  mau: number;
+  retained: number;
+  new: number;
+  resurrected: number;
+  churned: number;
+}
+
 export default function CollectionPage() {
   const { id } = useParams();
   const [collection, setCollection] = useState<Collection | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [growthData, setGrowthData] = useState<GrowthAccountingData[]>([]);
+  const [filteredData, setFilteredData] = useState<GrowthAccountingData[]>([]);
+
+  const today = new Date();
+  const lastMonth = addMonths(today, -1);
+  const initialDateRange = {
+    from: startOfMonth(subYears(lastMonth, 1)),
+    to: endOfMonth(lastMonth),
+  };
+
+  const handleDateRangeChange = useCallback(
+    (range: DateRange | undefined) => {
+      if (range?.from && range?.to) {
+        const filtered = growthData.filter((item) => {
+          const itemDate = toZonedTime(new Date(item.month), "UTC");
+          return itemDate >= range.from! && itemDate <= range.to!;
+        });
+        setFilteredData(filtered);
+      } else {
+        setFilteredData(growthData);
+      }
+    },
+    [growthData],
+  );
 
   useEffect(() => {
     fetchCollection();
+    fetchGrowthAccountingData();
   }, [id]);
 
   const fetchCollection = async () => {
@@ -56,9 +94,33 @@ export default function CollectionPage() {
     }
   };
 
+  const fetchGrowthAccountingData = async () => {
+    try {
+      const response = await fetch(`/api/collections/${id}/ga`);
+      if (!response.ok)
+        throw new Error("Failed to fetch growth accounting data");
+      const data = await response.json();
+      // const parsedData = data.map((item: any) => ({
+      //   ...item,
+      //   month: new Date(item.month),
+      // }));
+      setGrowthData(data);
+      setFilteredData(data);
+    } catch (error) {
+      console.error("Error fetching growth accounting data:", error);
+      toast({
+        title: "Error",
+        description:
+          "Failed to fetch growth accounting data. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleRepositoryAdded = () => {
     setIsDialogOpen(false);
     fetchCollection();
+    fetchGrowthAccountingData();
   };
 
   const handleRemoveRepository = async (repoId: number) => {
@@ -71,6 +133,7 @@ export default function CollectionPage() {
       );
       if (!response.ok) throw new Error("Failed to remove repository");
       fetchCollection();
+      fetchGrowthAccountingData();
       toast({
         title: "Repository removed",
         description: "Successfully removed repository from collection",
@@ -91,6 +154,14 @@ export default function CollectionPage() {
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">{collection.name}</h1>
       <p className="mb-4">{collection.description}</p>
+
+      {growthData.length > 0 && (
+        <GrowthAccountingChart
+          data={filteredData}
+          initialDateRange={initialDateRange}
+          onDateRangeChange={handleDateRangeChange}
+        />
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogTrigger asChild>
