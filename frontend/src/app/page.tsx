@@ -85,17 +85,6 @@ export default function Home() {
     }
   };
 
-  const handleCollectionsUpdated = useCallback(
-    (updatedCollections: Collection[]) => {
-      console.log("Collections updated:", updatedCollections);
-      // Update profileData with the new collections if needed
-      setProfileData((prevData) =>
-        prevData ? { ...prevData, repo_collections: {} } : null,
-      );
-    },
-    [],
-  );
-
   const fetchProfileData = useCallback(() => {
     fetchWrapper("/api/account/profile", {
       credentials: "include",
@@ -110,6 +99,16 @@ export default function Home() {
       .catch((error) => console.error("Error fetching profile data:", error));
   }, []);
 
+  const handleCollectionsUpdated = useCallback(
+    (updatedCollections: Collection[]) => {
+      console.log("Collections updated:", updatedCollections);
+      // Update profileData with the new collections if needed
+      setProfileData((prevData) => (prevData ? { ...prevData } : null));
+      fetchProfileData();
+    },
+    [fetchProfileData],
+  );
+
   useEffect(() => {
     if (status === "authenticated") {
       // TODO: Implement fetch for starred repos and profile data (repoCollections) as separate endpoints
@@ -121,7 +120,6 @@ export default function Home() {
   if (status === "loading") {
     return <div>Loading...</div>;
   }
-
   return (
     <main className="flex min-h-screen flex-col items-center p-24">
       {!session ? (

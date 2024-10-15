@@ -12,13 +12,14 @@ use serde_json::json;
 
 #[derive(Serialize, Deserialize)]
 pub struct Collection {
-    collection_id: i32,
-    owner_id: i32,
-    name: String,
-    description: Option<String>,
-    is_default: bool,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    pub collection_id: i32,
+    pub owner_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_default: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub repository_count: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -50,7 +51,7 @@ pub async fn create_collection(
         r#"
         INSERT INTO collection (owner_id, name, description)
         VALUES ($1, $2, $3)
-        RETURNING collection_id, owner_id, name, description, is_default, created_at, updated_at
+        RETURNING collection_id, owner_id, name, description, is_default, created_at, updated_at, 0::bigint as repository_count
         "#,
         account_id,
         collection.name,
@@ -81,9 +82,20 @@ pub async fn get_collections(
     let collections = sqlx::query_as!(
         Collection,
         r#"
-        SELECT collection_id, owner_id, name, description, is_default, created_at, updated_at
-        FROM collection
-        WHERE owner_id = $1
+        SELECT
+            c.collection_id,
+            c.owner_id,
+            c.name,
+            c.description,
+            c.is_default,
+            c.created_at,
+            c.updated_at,
+            COUNT(cr.repository_id) AS repository_count
+        FROM collection c
+        LEFT JOIN collection_repository cr ON c.collection_id = cr.collection_id
+        WHERE c.owner_id = $1
+        GROUP BY c.collection_id
+        ORDER BY c.created_at DESC
         "#,
         account_id
     )
@@ -101,9 +113,20 @@ pub async fn get_collection(
     let collection = sqlx::query_as!(
         Collection,
         r#"
-        SELECT collection_id, owner_id, name, description, is_default, created_at, updated_at
-        FROM collection
-        WHERE collection_id = $1
+        SELECT
+            c.collection_id,
+            c.owner_id,
+            c.name,
+            c.description,
+            c.is_default,
+            c.created_at,
+            c.updated_at,
+            COUNT(cr.repository_id) AS repository_count
+        FROM collection c
+        LEFT JOIN collection_repository cr ON c.collection_id = cr.collection_id
+        WHERE c.collection_id = $1
+        GROUP BY c.collection_id
+        ORDER BY c.created_at DESC
         "#,
         collection_id,
     )
@@ -179,7 +202,8 @@ pub async fn update_collection(
                     description = COALESCE($2, description),
                     updated_at = NOW()
                 WHERE collection_id = $3
-                RETURNING collection_id, owner_id, name, description, is_default, created_at, updated_at
+                RETURNING collection_id, owner_id, name, description, is_default, created_at, updated_at,
+                          (SELECT COUNT(*)::bigint FROM collection_repository WHERE collection_id = $3) AS repository_count
                 "#,
                 collection.name,
                 collection.description,

@@ -9,6 +9,9 @@ export interface Collection {
   name: string;
   description: string | null;
   is_default: boolean;
+  created_at: string;
+  updated_at: string;
+  repository_count: number;
 }
 
 interface CollectionsListProps {
@@ -60,6 +63,12 @@ export function CollectionsList({
           </CardHeader>
           <CardContent>
             <p>{collection.description || "No description"}</p>
+            <p className="mt-2 text-sm text-gray-500">
+              {collection.repository_count}{" "}
+              {collection.repository_count === 1
+                ? "repository"
+                : "repositories"}
+            </p>
             <Button asChild className="mt-2">
               <Link href={`/collections/${collection.collection_id}`}>
                 View Collection

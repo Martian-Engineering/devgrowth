@@ -1,5 +1,5 @@
 // components/StarredReposList.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,12 +51,14 @@ export function StarredReposList({
 }: StarredReposListProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [localRepoCollections, setLocalRepoCollections] =
+    useState<RepoCollectionMap>(repoCollections);
 
   useEffect(() => {
-    fetchCollections();
-  }, []);
+    setLocalRepoCollections(repoCollections);
+  }, [repoCollections]);
 
-  const fetchCollections = async () => {
+  const fetchCollections = useCallback(async () => {
     try {
       const response = await fetch("/api/collections", {
         credentials: "include",
@@ -67,14 +69,34 @@ export function StarredReposList({
     } catch (error) {
       console.error("Error fetching collections:", error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchCollections();
+  }, [fetchCollections]);
 
   const toggleRepoInCollection = async (
     repoId: number,
     collectionId: number,
   ) => {
+    const isInCollection = localRepoCollections[repoId]?.includes(collectionId);
+    // Optimistic update
+    setLocalRepoCollections((prev) => {
+      const newCollections = { ...prev };
+      if (isInCollection) {
+        newCollections[repoId] = newCollections[repoId].filter(
+          (id) => id !== collectionId,
+        );
+      } else {
+        newCollections[repoId] = [
+          ...(newCollections[repoId] || []),
+          collectionId,
+        ];
+      }
+      return newCollections;
+    });
+
     try {
-      const isInCollection = repoCollections[repoId]?.includes(collectionId);
       let method, url, body;
       if (isInCollection) {
         method = "DELETE";
@@ -100,6 +122,7 @@ export function StarredReposList({
       }
     } catch (error) {
       console.error("Error updating repository in collection:", error);
+      setLocalRepoCollections(repoCollections);
     }
   };
 
@@ -127,7 +150,7 @@ export function StarredReposList({
                   {collections.map((collection) => (
                     <DropdownMenuCheckboxItem
                       key={collection.collection_id}
-                      checked={repoCollections[repo.id]?.includes(
+                      checked={localRepoCollections[repo.id]?.includes(
                         collection.collection_id,
                       )}
                       onCheckedChange={() =>
