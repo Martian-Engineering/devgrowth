@@ -13,9 +13,12 @@ import {
   Legend,
   ChartData,
   ChartOptions,
+  TimeSeriesScale,
 } from "chart.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer } from "@/components/ui/chart";
+import { parse, format } from "date-fns";
+import "chartjs-adapter-date-fns";
 
 ChartJS.register(
   CategoryScale,
@@ -24,10 +27,11 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
+  TimeSeriesScale,
 );
 
 interface GrowthAccountingData {
-  date: string;
+  month: Date;
   mau: number;
   retained: number;
   new: number;
@@ -60,7 +64,7 @@ const chartConfig = {
 
 export function GrowthAccountingChart({ data }: GrowthAccountingChartProps) {
   const chartData: ChartData<"bar"> = {
-    labels: data.map((item) => item.date),
+    labels: data.map((item) => new Date(item.month).toISOString()),
     datasets: [
       {
         label: chartConfig.new.label,
@@ -91,6 +95,18 @@ export function GrowthAccountingChart({ data }: GrowthAccountingChartProps) {
     scales: {
       x: {
         stacked: true,
+        type: "time",
+        time: {
+          unit: "month",
+          displayFormats: {
+            month: "MM-yyyy",
+          },
+        },
+        ticks: {
+          callback: function (value) {
+            return format(value, "MM-yyyy");
+          },
+        },
       },
       y: {
         stacked: true,
@@ -99,10 +115,21 @@ export function GrowthAccountingChart({ data }: GrowthAccountingChartProps) {
     plugins: {
       tooltip: {
         callbacks: {
+          title: (context) => {
+            const dateString = context[0].label as string;
+            const date = parse(
+              dateString,
+              "MMM d, yyyy, h:mm:ss a",
+              new Date(),
+            );
+            return format(date, "MMM yyyy");
+          },
           label: (context) => {
             const label = context.dataset.label || "";
             const value = context.parsed.y;
-            return `${label}: ${Math.abs(value)}`;
+            const dataIndex = context.dataIndex;
+            const mau = data[dataIndex].mau; // Assuming your data array is in scope
+            return `${label}: ${Math.abs(value)} (MAU: ${mau})`;
           },
         },
       },

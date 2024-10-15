@@ -17,7 +17,7 @@ interface RepositoryMetadata {
 }
 
 interface GrowthAccountingData {
-  date: string;
+  month: Date;
   mau: number;
   retained: number;
   new: number;
