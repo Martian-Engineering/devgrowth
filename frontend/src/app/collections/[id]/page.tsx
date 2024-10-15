@@ -82,7 +82,6 @@ export default function CollectionPage() {
       const response = await fetch(`/api/collections/${id}`);
       if (!response.ok) throw new Error("Failed to fetch collection");
       const data = await response.json();
-      console.log("Collection data:", data);
       setCollection(data);
     } catch (error) {
       console.error("Error fetching collection:", error);

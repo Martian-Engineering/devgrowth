@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { StarredReposList } from "@/components/StarredReposList";
 import { CollectionsList } from "@/components/CollectionsList";
+import { fetchWrapper } from "@/lib/fetchWrapper";
 
 interface RepoCollectionMap {
   [repoId: number]: number[];
@@ -36,7 +37,7 @@ export default function Home() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
 
   const fetchProfileData = () => {
-    fetch("/api/account/profile", {
+    fetchWrapper("/api/account/profile", {
       credentials: "include",
     })
       .then((response) => {
@@ -60,8 +61,6 @@ export default function Home() {
   if (status === "loading") {
     return <div>Loading...</div>;
   }
-
-  console.log("Profile Data", profileData);
 
   return (
     <main className="flex min-h-screen flex-col items-center p-24">

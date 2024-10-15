@@ -5,6 +5,7 @@ import { logError } from "@/lib/logger";
 export const authOptions = {
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   providers: [
     GithubProvider({
@@ -17,6 +18,7 @@ export const authOptions = {
     async jwt({ token, account, profile }) {
       if (account && profile) {
         token.accessToken = account.access_token;
+        token.expiresAt = account.expires_at * 1000;
         token.id = profile.id;
       }
       return token;
@@ -24,6 +26,7 @@ export const authOptions = {
     async session({ session, token }) {
       session.user.id = token.id;
       session.isAuthenticated = !!token.accessToken; // boolean flag
+      session.expiresAt = token.expiresAt;
       return session;
     },
   },

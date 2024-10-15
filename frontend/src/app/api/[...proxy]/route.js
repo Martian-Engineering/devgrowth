@@ -22,6 +22,7 @@ export async function handler(request) {
     return NextResponse.json({ error: "Method Not Allowed" }, { status: 405 });
   }
 
+  let response; // to bind the response for access in error handling
   try {
     // Get the session token
     let token = cookies().get("auth_token")?.value;
@@ -70,10 +71,9 @@ export async function handler(request) {
       fetchOptions.duplex = "half";
     }
 
-    const response = await fetch(targetUrl, fetchOptions);
+    response = await fetch(targetUrl, fetchOptions);
 
     if (!response.ok) {
-      console.log(response);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
@@ -107,7 +107,7 @@ export async function handler(request) {
     logError("API call failed:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 },
+      { status: response?.status || 500 },
     );
   }
 }

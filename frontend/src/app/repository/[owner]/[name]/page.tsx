@@ -49,7 +49,6 @@ export default function RepositoryPage() {
           const itemDate = toZonedTime(new Date(item.month), "UTC");
           return itemDate >= range.from && itemDate <= range.to;
         });
-        console.log("filtered data", filtered);
         setFilteredData(filtered);
       } else {
         setFilteredData(growthData);

@@ -109,7 +109,15 @@ pub async fn get_profile_data(
     let github_client = get_github_client(&req)?;
 
     // Fetch the authenticated user's information
-    let user = github_client.current().user().await?;
+    let user = match github_client.current().user().await {
+        Ok(user) => user,
+        Err(e) => {
+            log::error!("Failed to fetch user data: {:?}", e);
+            return Err(AppError::Unauthorized(
+                "Failed to fetch user data".to_string(),
+            ));
+        }
+    };
 
     // Fetch the user's starred repositories
     let starred_repos = github_client
