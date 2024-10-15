@@ -8,6 +8,17 @@ import { useState, useEffect } from "react";
 import { StarredReposList } from "@/components/StarredReposList";
 import { CollectionsList } from "@/components/CollectionsList";
 import { fetchWrapper } from "@/lib/fetchWrapper";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { ReloadIcon } from "@radix-ui/react-icons";
 
 interface RepoCollectionMap {
   [repoId: number]: number[];
@@ -35,6 +46,42 @@ interface StarredRepo {
 export default function Home() {
   const { data: session, status } = useSession();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [newCollectionDescription, setNewCollectionDescription] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleCreateCollection = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await fetchWrapper("/api/collections", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: newCollectionName,
+          description: newCollectionDescription,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create collection");
+      }
+
+      console.log(response);
+
+      // Close the dialog and refresh the data
+      setIsDialogOpen(false);
+      fetchProfileData();
+    } catch (error) {
+      console.error("Error creating collection:", error);
+    } finally {
+      setIsSubmitting(false);
+      setNewCollectionName("");
+      setNewCollectionDescription("");
+    }
+  };
 
   const fetchProfileData = () => {
     fetchWrapper("/api/account/profile", {
@@ -87,9 +134,70 @@ export default function Home() {
               />
             </div>
             <div className="w-full md:w-1/2">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-semibold">Collections</h2>
+                <Button onClick={() => setIsDialogOpen(true)}>
+                  Create New Collection
+                </Button>
+              </div>
               <CollectionsList />
             </div>
           </div>
+
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Collection</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="name" className="text-right">
+                    Name
+                  </Label>
+                  <Input
+                    id="name"
+                    value={newCollectionName}
+                    onChange={(e) => setNewCollectionName(e.target.value)}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="description" className="text-right">
+                    Description
+                  </Label>
+                  <Textarea
+                    id="description"
+                    value={newCollectionDescription}
+                    onChange={(e) =>
+                      setNewCollectionDescription(e.target.value)
+                    }
+                    className="col-span-3"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateCollection}
+                  disabled={!newCollectionName || isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create"
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       ) : (
         <div>Loading profile data...</div>

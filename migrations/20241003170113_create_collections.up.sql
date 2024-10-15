@@ -7,9 +7,12 @@ CREATE TABLE collection (
     is_default BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    UNIQUE (owner_id, is_default),
     UNIQUE (owner_id, name)
 );
+
+CREATE UNIQUE INDEX idx_one_default_per_owner
+ON collection (owner_id)
+WHERE is_default = true;
 
 CREATE OR REPLACE FUNCTION update_collection_timestamp()
 RETURNS TRIGGER AS $$

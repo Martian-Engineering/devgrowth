@@ -45,7 +45,7 @@ pub async fn create_collection(
         ));
     }
 
-    let result = sqlx::query_as!(
+    let result = match sqlx::query_as!(
         Collection,
         r#"
         INSERT INTO collection (owner_id, name, description)
@@ -57,7 +57,17 @@ pub async fn create_collection(
         collection.description
     )
     .fetch_one(&state.db_pool)
-    .await?;
+    .await
+    {
+        Ok(result) => result,
+        Err(sqlx::Error::Database(e)) => {
+            log::error!("Error creating collection: {:?}", e);
+            return Err(AppError::BadRequest(
+                "Collection with the same name already exists".into(),
+            ));
+        }
+        Err(err) => return Err(err.into()),
+    };
 
     Ok(HttpResponse::Created().json(result))
 }

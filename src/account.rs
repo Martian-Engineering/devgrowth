@@ -15,7 +15,8 @@ async fn create_default_collection(
         r#"
         INSERT INTO collection (owner_id, name, description, is_default)
         VALUES ($1, 'Default', 'Default collection', true)
-        ON CONFLICT (owner_id, is_default) DO NOTHING
+        ON CONFLICT (owner_id) WHERE is_default = true
+        DO NOTHING
         "#,
         owner_id
     )
