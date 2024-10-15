@@ -175,7 +175,7 @@ async fn write_repository(
     repository_name: &str,
     repository_owner: &str,
 ) -> Result<Repository, sqlx::Error> {
-    let row = sqlx::query!(
+    let row = match sqlx::query!(
         r#"
         INSERT INTO repository (repository_id, name, owner)
         VALUES ($1, $2, $3)
@@ -186,7 +186,17 @@ async fn write_repository(
         repository_owner,
     )
     .fetch_one(pool)
-    .await?;
+    .await
+    {
+        Ok(row) => {
+            log::info!("Successfully inserted repository: {:?}", row);
+            row
+        }
+        Err(e) => {
+            log::error!("Failed to insert repository: {:?}", e);
+            return Err(e);
+        }
+    };
 
     Ok(Repository {
         repository_id: row.repository_id,
@@ -208,6 +218,12 @@ pub async fn upsert_repository(
         if let Some(existing_repo) = get_repository_by_id(pool, id).await? {
             return Ok(existing_repo);
         }
+    }
+
+    if let Some(existing_repo) =
+        get_repository_by_name_owner(pool, &new_repo.name, &new_repo.owner).await?
+    {
+        return Ok(existing_repo);
     }
 
     let github_client = match get_github_client(&req) {
@@ -262,6 +278,25 @@ async fn get_repository_by_id(pool: &PgPool, id: i32) -> Result<Option<Repositor
         WHERE repository_id = $1
         "#,
         id
+    )
+    .fetch_optional(pool)
+    .await
+}
+
+async fn get_repository_by_name_owner(
+    pool: &PgPool,
+    name: &str,
+    owner: &str,
+) -> Result<Option<Repository>, sqlx::Error> {
+    sqlx::query_as!(
+        Repository,
+        r#"
+        SELECT repository_id, name, owner, indexed_at, created_at, updated_at
+        FROM repository
+        WHERE name = $1 AND owner = $2
+        "#,
+        name,
+        owner
     )
     .fetch_optional(pool)
     .await

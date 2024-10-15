@@ -261,8 +261,6 @@ pub async fn add_repository_to_collection(
     .fetch_optional(&state.db_pool)
     .await?;
 
-    log::info!("Collection: {:?}", collection);
-
     if let Some(collection) = collection {
         if collection.owner_id != account_id {
             return Err(AppError::Unauthorized(
@@ -306,7 +304,6 @@ pub async fn add_repository_to_collection(
     };
 
     let repository = upsert_repository(&state, &req, new_repo).await?;
-    println!("Repository: {:?}", repository);
 
     // Add the repository to the collection
     match sqlx::query!(
