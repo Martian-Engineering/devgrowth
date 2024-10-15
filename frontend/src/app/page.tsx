@@ -4,9 +4,9 @@
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { StarredReposList } from "@/components/StarredReposList";
-import { CollectionsList } from "@/components/CollectionsList";
+import { CollectionsList, Collection } from "@/components/CollectionsList";
 import { fetchWrapper } from "@/lib/fetchWrapper";
 import {
   Dialog,
@@ -50,6 +50,7 @@ export default function Home() {
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [collectionsRefreshTrigger, setCollectionsRefreshTrigger] = useState(0);
 
   const handleCreateCollection = async () => {
     setIsSubmitting(true);
@@ -73,6 +74,7 @@ export default function Home() {
 
       // Close the dialog and refresh the data
       setIsDialogOpen(false);
+      setCollectionsRefreshTrigger((prev) => prev + 1);
       fetchProfileData();
     } catch (error) {
       console.error("Error creating collection:", error);
@@ -83,7 +85,18 @@ export default function Home() {
     }
   };
 
-  const fetchProfileData = () => {
+  const handleCollectionsUpdated = useCallback(
+    (updatedCollections: Collection[]) => {
+      console.log("Collections updated:", updatedCollections);
+      // Update profileData with the new collections if needed
+      setProfileData((prevData) =>
+        prevData ? { ...prevData, repo_collections: {} } : null,
+      );
+    },
+    [],
+  );
+
+  const fetchProfileData = useCallback(() => {
     fetchWrapper("/api/account/profile", {
       credentials: "include",
     })
@@ -95,7 +108,7 @@ export default function Home() {
       })
       .then(setProfileData)
       .catch((error) => console.error("Error fetching profile data:", error));
-  };
+  }, []);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -103,7 +116,7 @@ export default function Home() {
       // TODO: Optimistic update of UI
       fetchProfileData();
     }
-  }, [status]);
+  }, [status, fetchProfileData]);
 
   if (status === "loading") {
     return <div>Loading...</div>;
@@ -140,7 +153,10 @@ export default function Home() {
                   Create New Collection
                 </Button>
               </div>
-              <CollectionsList />
+              <CollectionsList
+                refreshTrigger={collectionsRefreshTrigger}
+                onCollectionsUpdated={handleCollectionsUpdated}
+              />
             </div>
           </div>
 

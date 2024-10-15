@@ -4,14 +4,22 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
-interface Collection {
+export interface Collection {
   collection_id: number;
   name: string;
   description: string | null;
   is_default: boolean;
 }
 
-export function CollectionsList() {
+interface CollectionsListProps {
+  refreshTrigger: number;
+  onCollectionsUpdated?: (collections: Collection[]) => void;
+}
+
+export function CollectionsList({
+  refreshTrigger,
+  onCollectionsUpdated,
+}: CollectionsListProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +35,7 @@ export function CollectionsList() {
         }
         const data = await response.json();
         setCollections(data);
+        if (onCollectionsUpdated) onCollectionsUpdated(data);
       } catch (error) {
         setError("Error fetching collections");
         console.error("Error fetching collections:", error);
@@ -36,7 +45,7 @@ export function CollectionsList() {
     };
 
     fetchCollections();
-  }, []);
+  }, [refreshTrigger, onCollectionsUpdated]);
 
   if (isLoading) return <div>Loading collections...</div>;
   if (error) return <div>{error}</div>;
