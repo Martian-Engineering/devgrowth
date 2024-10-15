@@ -145,7 +145,7 @@ pub async fn get_profile_data(
 
     let profile_data = ProfileData {
         github_id: user.id.to_string(),
-        name: "Josh Lehman".to_string(), // user.name.unwrap_or_else(|| user.login.clone()),
+        name: user.login.to_string(),
         email: user.email.unwrap_or_default(),
         starred_repositories,
         repo_collections,
