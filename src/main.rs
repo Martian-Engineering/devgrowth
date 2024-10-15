@@ -85,6 +85,10 @@ async fn main() -> io::Result<()> {
                     }))
                     .service(web::scope("/auth").route("/logout", web::post().to(logout)))
                     .service(
+                        web::scope("/github")
+                            .route("/starred", web::get().to(github::get_starred_repositories)),
+                    )
+                    .service(
                         web::scope("/repositories")
                             .route("", web::get().to(list_repositories))
                             .route("", web::post().to(create_repository))
