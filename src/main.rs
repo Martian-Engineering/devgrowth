@@ -18,6 +18,7 @@ mod commit;
 mod db;
 mod error;
 mod github;
+mod growth_accounting;
 mod job_processor;
 mod job_queue;
 mod middleware;
