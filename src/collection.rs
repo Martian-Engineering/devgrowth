@@ -22,6 +22,19 @@ pub struct Collection {
     pub repository_count: Option<i64>,
 }
 
+#[derive(sqlx::FromRow, serde::Serialize)]
+struct CollectionWithRepositories {
+    collection_id: i32,
+    owner_id: i32,
+    name: String,
+    description: Option<String>,
+    is_default: bool,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    repository_count: Option<i64>,
+    repositories: serde_json::Value,
+}
+
 #[derive(Deserialize)]
 pub struct CreateCollection {
     name: String,
@@ -80,7 +93,7 @@ pub async fn get_collections(
     let account_id = get_account_id(&req)?;
 
     let collections = sqlx::query_as!(
-        Collection,
+        CollectionWithRepositories,
         r#"
         SELECT
             c.collection_id,
@@ -90,9 +103,23 @@ pub async fn get_collections(
             c.is_default,
             c.created_at,
             c.updated_at,
-            COUNT(cr.repository_id) AS repository_count
+            COUNT(cr.repository_id)::bigint AS repository_count,
+            COALESCE(
+                json_agg(
+                    json_build_object(
+                        'repository_id', r.repository_id,
+                        'name', r.name,
+                        'owner', r.owner,
+                        'indexed_at', r.indexed_at,
+                        'created_at', r.created_at,
+                        'updated_at', r.updated_at
+                    )
+                ) FILTER (WHERE r.repository_id IS NOT NULL),
+                '[]'::json
+            ) AS repositories
         FROM collection c
         LEFT JOIN collection_repository cr ON c.collection_id = cr.collection_id
+        LEFT JOIN repository r ON cr.repository_id = r.repository_id
         WHERE c.owner_id = $1
         GROUP BY c.collection_id
         ORDER BY c.created_at DESC
@@ -212,7 +239,29 @@ pub async fn update_collection(
             .fetch_one(&state.db_pool)
             .await?;
 
-            Ok(HttpResponse::Ok().json(updated_collection))
+            let repositories = sqlx::query_as!(
+                Repository,
+                r#"
+                SELECT r.repository_id, r.name, r.owner, r.indexed_at, r.created_at, r.updated_at
+                FROM repository r
+                JOIN collection_repository cr ON r.repository_id = cr.repository_id
+                WHERE cr.collection_id = $1
+                "#,
+                collection_id
+            )
+            .fetch_all(&state.db_pool)
+            .await?;
+
+            let mut collection_json = serde_json::to_value(updated_collection).unwrap();
+            if let serde_json::Value::Object(ref mut obj) = collection_json {
+                obj.insert(
+                    "repositories".to_string(),
+                    serde_json::to_value(repositories).unwrap(),
+                );
+            }
+            let response = collection_json;
+
+            Ok(HttpResponse::Ok().json(response))
         }
         Some(_) => Err(AppError::Unauthorized(
             "You do not own this collection".into(),
@@ -287,7 +336,7 @@ pub async fn add_repository_to_collection(
     // Check if the collection belongs to the user
     let collection = sqlx::query!(
         r#"
-            SELECT owner_id, is_default FROM collection
+            SELECT owner_id FROM collection
             WHERE collection_id = $1
             "#,
         collection_id
@@ -382,7 +431,7 @@ pub async fn remove_repository_from_collection(
     let (collection_id, repository_id) = path.into_inner();
     let collection = sqlx::query!(
         r#"
-        SELECT owner_id, is_default FROM collection
+        SELECT owner_id FROM collection
         WHERE collection_id = $1
         "#,
         collection_id
@@ -428,7 +477,7 @@ pub async fn get_collection_growth_accounting(
     let collection_id = collection_id.into_inner();
     let collection = sqlx::query!(
         r#"
-        SELECT owner_id, is_default FROM collection
+        SELECT owner_id FROM collection
         WHERE collection_id = $1
         "#,
         collection_id
