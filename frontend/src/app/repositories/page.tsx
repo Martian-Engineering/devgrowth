@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { AddRepositoryForm } from "@/components/AddRepositoryForm";
 import { Toaster } from "@/components/ui/toaster";
+import { fetchWrapper } from "@/lib/fetchWrapper";
 
 interface Repository {
   id: number;
@@ -29,7 +30,7 @@ export default function RepositoriesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
 
   const fetchRepositories = async () => {
-    const response = await fetch("/api/repositories");
+    const response = await fetchWrapper("/api/repositories");
     if (!response.ok) throw new Error("Failed to fetch repositories");
     const data = await response.json();
     setRepositories(data);

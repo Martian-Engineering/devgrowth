@@ -7,6 +7,7 @@ import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
 import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { DateRange } from "react-day-picker";
+import { fetchWrapper } from "@/lib/fetchWrapper";
 
 interface RepositoryMetadata {
   id: number;
@@ -59,11 +60,11 @@ export default function RepositoryPage() {
 
   useEffect(() => {
     if (params.owner && params.name) {
-      fetch(`/api/repositories/${params.owner}/${params.name}`)
+      fetchWrapper(`/api/repositories/${params.owner}/${params.name}`)
         .then((response) => response.json())
         .then((data) => setMetadata(data));
 
-      fetch(`/api/repositories/${params.owner}/${params.name}/ga`)
+      fetchWrapper(`/api/repositories/${params.owner}/${params.name}/ga`)
         .then((response) => response.json())
         .then((data) => {
           setGrowthData(data);

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
+import { fetchWrapper } from "@/lib/fetchWrapper";
 
 interface AddRepositoryFormProps {
   onRepositoryAdded: () => void;
@@ -20,7 +21,7 @@ export function AddRepositoryForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch(
+      const response = await fetchWrapper(
         `/api/collections/${collectionId}/repositories`,
         {
           method: "POST",

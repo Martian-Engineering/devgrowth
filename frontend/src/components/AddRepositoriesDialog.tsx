@@ -7,6 +7,7 @@ import {
 } from "@/components/AddRepositoriesForm";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
+import { fetchWrapper } from "@/lib/fetchWrapper";
 
 interface AddRepositoriesDialogProps {
   collectionId: number;
@@ -32,7 +33,7 @@ export function AddRepositoriesDialog({
 
   const fetchStarredRepos = async () => {
     try {
-      const response = await fetch("/api/github/starred");
+      const response = await fetchWrapper("/api/github/starred");
       if (!response.ok) throw new Error("Failed to fetch starred repositories");
       const data = await response.json();
       setStarredRepos(data);
@@ -50,7 +51,7 @@ export function AddRepositoriesDialog({
 
     for (const repo of selectedRepos) {
       try {
-        const response = await fetch(
+        const response = await fetchWrapper(
           `/api/collections/${collectionId}/repositories`,
           {
             method: "POST",

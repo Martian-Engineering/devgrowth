@@ -19,33 +19,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ReloadIcon } from "@radix-ui/react-icons";
-
-interface RepoCollectionMap {
-  [repoId: number]: number[];
-}
-
-interface ProfileData {
-  github_id: string;
-  login: string;
-  name: string | null;
-  email: string | null;
-  starred_repositories: StarredRepo[];
-  repo_collections: RepoCollectionMap;
-}
-
-interface StarredRepo {
-  id: number;
-  name: string;
-  owner: string;
-  html_url: string;
-  description: string | null;
-  stargazers_count: number | null;
-  synced_at: Date | null;
-}
+import { useProfile } from "@/contexts/ProfileContext";
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const { profileData, refetchProfile } = useProfile();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
@@ -70,12 +48,12 @@ export default function Home() {
         throw new Error("Failed to create collection");
       }
 
-      console.log(response);
+      console.log("Fetched collections:", response);
 
       // Close the dialog and refresh the data
       setIsDialogOpen(false);
       setCollectionsRefreshTrigger((prev) => prev + 1);
-      fetchProfileData();
+      refetchProfile();
     } catch (error) {
       console.error("Error creating collection:", error);
     } finally {
@@ -85,37 +63,24 @@ export default function Home() {
     }
   };
 
-  const fetchProfileData = useCallback(() => {
-    fetchWrapper("/api/account/profile", {
-      credentials: "include",
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to fetch profile data");
-        }
-        return response.json();
-      })
-      .then(setProfileData)
-      .catch((error) => console.error("Error fetching profile data:", error));
-  }, []);
-
+  // TODO: Implement a Collections Context and then do something with this
   const handleCollectionsUpdated = useCallback(
     (updatedCollections: Collection[]) => {
       console.log("Collections updated:", updatedCollections);
       // Update profileData with the new collections if needed
-      setProfileData((prevData) => (prevData ? { ...prevData } : null));
-      fetchProfileData();
+      // setProfileData((prevData) => (prevData ? { ...prevData } : null));
+      refetchProfile();
     },
-    [fetchProfileData],
+    [refetchProfile],
   );
 
   useEffect(() => {
     if (status === "authenticated") {
       // TODO: Implement fetch for starred repos and profile data (repoCollections) as separate endpoints
       // TODO: Optimistic update of UI
-      fetchProfileData();
+      refetchProfile();
     }
-  }, [status, fetchProfileData]);
+  }, [status, refetchProfile]);
 
   if (status === "loading") {
     return <div>Loading...</div>;
@@ -140,8 +105,7 @@ export default function Home() {
             <div className="w-full md:w-1/2">
               <StarredReposList
                 repos={profileData.starred_repositories}
-                repoCollections={profileData.repo_collections}
-                onCollectionUpdate={fetchProfileData}
+                onCollectionUpdate={refetchProfile}
               />
             </div>
             <div className="w-full md:w-1/2">

@@ -3,6 +3,9 @@ import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { fetchWrapper } from "@/lib/fetchWrapper";
+import { useProfile } from "@/contexts/ProfileContext";
+import { getRepositoryCountForCollection } from "@/lib/collection";
 
 export interface Collection {
   collection_id: number;
@@ -26,11 +29,14 @@ export function CollectionsList({
   const [collections, setCollections] = useState<Collection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { profileData } = useProfile();
+
+  console.log("Profile Data in Collections List:", profileData);
 
   useEffect(() => {
     const fetchCollections = async () => {
       try {
-        const response = await fetch("/api/collections", {
+        const response = await fetchWrapper("/api/collections", {
           credentials: "include",
         });
         if (!response.ok) {
@@ -64,7 +70,11 @@ export function CollectionsList({
           <CardContent>
             <p>{collection.description || "No description"}</p>
             <p className="mt-2 text-sm text-gray-500">
-              {collection.repository_count}{" "}
+              {profileData &&
+                getRepositoryCountForCollection(
+                  collection.collection_id,
+                  profileData.repo_collections,
+                )}{" "}
               {collection.repository_count === 1
                 ? "repository"
                 : "repositories"}

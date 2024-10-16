@@ -18,6 +18,7 @@ import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
 import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { DateRange } from "react-day-picker";
+import { fetchWrapper } from "@/lib/fetchWrapper";
 
 interface Collection {
   collection_id: number;
@@ -74,20 +75,15 @@ export default function CollectionPage() {
     [growthData],
   );
 
-  useEffect(() => {
-    fetchCollection();
-    fetchGrowthAccountingData();
-  }, [id]);
-
   const handleRepositoriesAdded = () => {
     setIsAddReposDialogOpen(false);
     fetchCollection();
     fetchGrowthAccountingData();
   };
 
-  const fetchCollection = async () => {
+  const fetchCollection = useCallback(async () => {
     try {
-      const response = await fetch(`/api/collections/${id}`);
+      const response = await fetchWrapper(`/api/collections/${id}`);
       if (!response.ok) throw new Error("Failed to fetch collection");
       const data = await response.json();
       setCollection(data);
@@ -99,11 +95,11 @@ export default function CollectionPage() {
         variant: "destructive",
       });
     }
-  };
+  }, [id]);
 
-  const fetchGrowthAccountingData = async () => {
+  const fetchGrowthAccountingData = useCallback(async () => {
     try {
-      const response = await fetch(`/api/collections/${id}/ga`);
+      const response = await fetchWrapper(`/api/collections/${id}/ga`);
       if (!response.ok)
         throw new Error("Failed to fetch growth accounting data");
       const data = await response.json();
@@ -122,7 +118,12 @@ export default function CollectionPage() {
         variant: "destructive",
       });
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchCollection();
+    fetchGrowthAccountingData();
+  }, [id, fetchCollection, fetchGrowthAccountingData]);
 
   const handleRepositoryAdded = () => {
     setIsDialogOpen(false);
@@ -132,7 +133,7 @@ export default function CollectionPage() {
 
   const handleRemoveRepository = async (repoId: number) => {
     try {
-      const response = await fetch(
+      const response = await fetchWrapper(
         `/api/collections/${id}/repositories/${repoId}`,
         {
           method: "DELETE",

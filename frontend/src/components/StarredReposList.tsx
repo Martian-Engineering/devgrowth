@@ -17,50 +17,32 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { fetchWrapper } from "@/lib/fetchWrapper";
+import { useProfile, GithubRepo } from "@/contexts/ProfileContext";
 
 const ITEMS_PER_PAGE = 10;
-
-interface StarredRepo {
-  id: number;
-  name: string;
-  owner: string;
-  html_url: string;
-  description: string | null;
-  stargazers_count: number | null;
-}
 
 interface Collection {
   collection_id: number;
   name: string;
 }
 
-interface RepoCollectionMap {
-  [repoId: number]: number[];
-}
-
 interface StarredReposListProps {
-  repos: StarredRepo[];
-  repoCollections: RepoCollectionMap;
+  repos: GithubRepo[];
   onCollectionUpdate: () => void;
 }
 
 export function StarredReposList({
   repos,
-  repoCollections,
   onCollectionUpdate,
 }: StarredReposListProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [localRepoCollections, setLocalRepoCollections] =
-    useState<RepoCollectionMap>(repoCollections);
-
-  useEffect(() => {
-    setLocalRepoCollections(repoCollections);
-  }, [repoCollections]);
+  const { profileData, dispatch } = useProfile();
 
   const fetchCollections = useCallback(async () => {
     try {
-      const response = await fetch("/api/collections", {
+      const response = await fetchWrapper("/api/collections", {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch collections");
@@ -79,22 +61,20 @@ export function StarredReposList({
     repoId: number,
     collectionId: number,
   ) => {
-    const isInCollection = localRepoCollections[repoId]?.includes(collectionId);
+    const isInCollection =
+      profileData?.repo_collections[repoId]?.includes(collectionId);
     // Optimistic update
-    setLocalRepoCollections((prev) => {
-      const newCollections = { ...prev };
-      if (isInCollection) {
-        newCollections[repoId] = newCollections[repoId].filter(
-          (id) => id !== collectionId,
-        );
-      } else {
-        newCollections[repoId] = [
-          ...(newCollections[repoId] || []),
-          collectionId,
-        ];
-      }
-      return newCollections;
-    });
+    if (isInCollection) {
+      dispatch({
+        type: "REMOVE_REPOSITORY_FROM_COLLECTION",
+        payload: { repoId, collectionId },
+      });
+    } else {
+      dispatch({
+        type: "ADD_REPOSITORY_TO_COLLECTION",
+        payload: { repoId, collectionId },
+      });
+    }
 
     try {
       let method, url, body;
@@ -122,7 +102,6 @@ export function StarredReposList({
       }
     } catch (error) {
       console.error("Error updating repository in collection:", error);
-      setLocalRepoCollections(repoCollections);
     }
   };
 
@@ -150,7 +129,7 @@ export function StarredReposList({
                   {collections.map((collection) => (
                     <DropdownMenuCheckboxItem
                       key={collection.collection_id}
-                      checked={localRepoCollections[repo.id]?.includes(
+                      checked={profileData?.repo_collections[repo.id]?.includes(
                         collection.collection_id,
                       )}
                       onCheckedChange={() =>
