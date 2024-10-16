@@ -1,7 +1,7 @@
 // devgrowth/frontend/src/components/ManageRepositoriesDialog.tsx
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ManageRepositoriesForm } from "@/components/ManageRepositoriesForm";
+import { ManageRepositoriesTable } from "@/components/ManageRepositoriesTable";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { fetchWrapper } from "@/lib/fetchWrapper";
@@ -116,7 +116,7 @@ export function ManageRepositoriesDialog({
         <TabsTrigger value="search">Search</TabsTrigger>
       </TabsList>
       <TabsContent value="starred">
-        <ManageRepositoriesForm
+        <ManageRepositoriesTable
           collectionId={collectionId}
           repositories={repos}
           onSelectionChange={setSelectedRepos}

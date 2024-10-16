@@ -1,4 +1,4 @@
-// devgrowth/frontend/src/components/ManageRepositoriesForm.tsx
+// devgrowth/frontend/src/components/ManageRepositoriesTable.tsx
 import React, { useState, useEffect } from "react";
 import {
   useReactTable,
@@ -26,17 +26,17 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { GithubRepo, useProfile } from "@/contexts/ProfileContext";
 
-interface ManageRepositoriesFormProps {
+interface ManageRepositoriesTableProps {
   collectionId: number;
   repositories: GithubRepo[];
   onSelectionChange: (selectedRepos: GithubRepo[]) => void;
 }
 
-export function ManageRepositoriesForm({
+export function ManageRepositoriesTable({
   collectionId,
   repositories,
   onSelectionChange,
-}: ManageRepositoriesFormProps) {
+}: ManageRepositoriesTableProps) {
   const { profile } = useProfile();
   const [selection, setSelection] = useState<Set<number>>(new Set());
 
