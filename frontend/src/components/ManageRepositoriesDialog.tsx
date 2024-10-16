@@ -1,11 +1,16 @@
 // devgrowth/frontend/src/components/ManageRepositoriesDialog.tsx
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ManageRepositoriesTable } from "@/components/ManageRepositoriesTable";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { fetchWrapper } from "@/lib/fetchWrapper";
 import { GithubRepo, useProfile } from "@/contexts/ProfileContext";
+
+import { ReloadIcon } from "@radix-ui/react-icons";
+
 import { toast } from "@/hooks/use-toast";
 
 interface ManageRepositoriesDialogProps {
@@ -24,10 +29,15 @@ export function ManageRepositoriesDialog({
   const [isLoading, setIsLoading] = useState(false);
   const { profile, dispatch } = useProfile();
   const [selectedRepos, setSelectedRepos] = useState<GithubRepo[]>([]);
+  const [orgName, setOrgName] = useState("");
+  const [orgRepos, setOrgRepos] = useState<GithubRepo[]>([]);
+  const [isFetchingOrg, setIsFetchingOrg] = useState(false);
 
   useEffect(() => {
-    setRepos(profile?.starred_repositories || []);
-  }, [profile?.starred_repositories]);
+    if (activeTab === "starred") {
+      setRepos(profile?.starred_repositories || []);
+    }
+  }, [activeTab, profile?.starred_repositories]);
 
   const saveRepositories = async () => {
     setIsLoading(true);
@@ -108,6 +118,34 @@ export function ManageRepositoriesDialog({
     }
   };
 
+  const fetchOrgRepositories = async () => {
+    if (!orgName) return;
+    setIsFetchingOrg(true);
+    try {
+      const response = await fetchWrapper(`/api/github/orgs/${orgName}/repos`);
+      if (response.ok) {
+        const data = await response.json();
+        setOrgRepos(data);
+        setRepos(data);
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to fetch organization repositories.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching organization repositories:", error);
+      toast({
+        title: "Error",
+        description: `An error occurred while fetching ${orgName}'s repositories.`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsFetchingOrg(false);
+    }
+  };
+
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab}>
       <TabsList>
@@ -123,19 +161,52 @@ export function ManageRepositoriesDialog({
         />
       </TabsContent>
       <TabsContent value="organization">
-        <p>Organization repositories will be displayed here.</p>
-        {/* Implement organization repositories view */}
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="orgName">Organization Name</Label>
+            <Input
+              id="orgName"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              placeholder="Enter organization name"
+            />
+          </div>
+          <Button onClick={fetchOrgRepositories} disabled={isFetchingOrg}>
+            {isFetchingOrg ? (
+              <>
+                <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                Fetching...
+              </>
+            ) : (
+              "Fetch Repositories"
+            )}
+          </Button>
+          {orgRepos.length > 0 && (
+            <ManageRepositoriesTable
+              collectionId={collectionId}
+              repositories={orgRepos}
+              onSelectionChange={setSelectedRepos}
+            />
+          )}
+        </div>
       </TabsContent>
       <TabsContent value="search">
         <p>Repository search will be implemented here.</p>
         {/* Implement repository search view */}
       </TabsContent>
       <DialogFooter>
-        <Button onClick={onClose} variant="outline">
+        <Button onClick={onClose} variant="outline" disabled={isLoading}>
           Cancel
         </Button>
         <Button onClick={saveRepositories} disabled={isLoading}>
-          {isLoading ? "Saving..." : "Save"}
+          {isLoading ? (
+            <>
+              <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            "Save"
+          )}
         </Button>
       </DialogFooter>
     </Tabs>

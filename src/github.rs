@@ -1,7 +1,8 @@
 use crate::auth::Claims;
 use crate::error::AppError;
-use actix_web::{HttpMessage, HttpRequest, HttpResponse};
+use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use log::error;
+use octocrab::params::repos::Type;
 use octocrab::Octocrab;
 use serde::{Deserialize, Serialize};
 
@@ -73,4 +74,34 @@ pub async fn get_starred_repositories(
         .collect();
 
     Ok(HttpResponse::Ok().json(starred_repositories))
+}
+
+pub async fn get_organization_repositories(
+    req: HttpRequest,
+    org: web::Path<String>,
+) -> Result<HttpResponse, AppError> {
+    let github_client = get_github_client(&req)?;
+
+    let repos = github_client
+        .orgs(&*org)
+        .list_repos()
+        .repo_type(Type::All)
+        .per_page(100)
+        .send()
+        .await?;
+
+    let org_repositories: Vec<GithubRepo> = repos
+        .items
+        .into_iter()
+        .map(|repo| GithubRepo {
+            id: repo.id.0,
+            name: repo.name,
+            owner: repo.owner.map(|owner| owner.login).unwrap_or_default(),
+            html_url: repo.html_url.map(|url| url.to_string()).unwrap_or_default(),
+            description: repo.description,
+            stargazers_count: repo.stargazers_count,
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(org_repositories))
 }
