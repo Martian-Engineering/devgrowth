@@ -1,22 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use sqlx::{PgPool, Postgres, QueryBuilder};
-use std::fmt;
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum SortOrder {
-    Asc,
-    Desc,
-}
-
-impl fmt::Display for SortOrder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SortOrder::Asc => write!(f, "ASC"),
-            SortOrder::Desc => write!(f, "DESC"),
-        }
-    }
-}
+use sqlx::PgPool;
 
 #[derive(sqlx::FromRow, Serialize)]
 pub struct MAUGrowthAccountingResult {

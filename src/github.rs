@@ -1,7 +1,6 @@
 use crate::auth::Claims;
 use crate::error::AppError;
-use crate::AppState;
-use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
+use actix_web::{HttpMessage, HttpRequest, HttpResponse};
 use log::error;
 use octocrab::Octocrab;
 use serde::{Deserialize, Serialize};
