@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::github::get_github_client;
 use crate::AppState;
 use actix_web::{web, HttpRequest, HttpResponse};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::HashMap;
 
@@ -62,24 +62,12 @@ pub struct ProfileData {
     github_id: String,
     name: String,
     email: String,
-    starred_repositories: Vec<StarredRepo>,
-    repo_collections: HashMap<i32, Vec<i32>>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct StarredRepo {
-    id: u64,
-    name: String,
-    owner: String,
-    html_url: String,
-    description: Option<String>,
-    stargazers_count: Option<u32>,
-}
-
-async fn get_repo_collections(
-    pool: &PgPool,
+pub async fn get_repo_collections(
+    state: web::Data<AppState>,
     req: HttpRequest,
-) -> Result<HashMap<i32, Vec<i32>>, AppError> {
+) -> Result<HttpResponse, AppError> {
     let account_id = get_account_id(&req)?;
 
     let repo_collections = sqlx::query!(
@@ -92,7 +80,7 @@ async fn get_repo_collections(
         "#,
         account_id
     )
-    .fetch_all(pool)
+    .fetch_all(&state.db_pool)
     .await?;
 
     let result: HashMap<i32, Vec<i32>> = repo_collections
@@ -100,13 +88,10 @@ async fn get_repo_collections(
         .map(|row| (row.repository_id, row.collection_ids.unwrap_or_default()))
         .collect();
 
-    return Ok(result);
+    Ok(HttpResponse::Ok().json(result))
 }
 
-pub async fn get_profile_data(
-    state: web::Data<AppState>,
-    req: HttpRequest,
-) -> Result<HttpResponse, AppError> {
+pub async fn get_profile_data(req: HttpRequest) -> Result<HttpResponse, AppError> {
     let github_client = get_github_client(&req)?;
 
     // Fetch the authenticated user's information
@@ -120,36 +105,10 @@ pub async fn get_profile_data(
         }
     };
 
-    // Fetch the user's starred repositories
-    let starred_repos = github_client
-        .current()
-        .list_repos_starred_by_authenticated_user()
-        .per_page(100) // Adjust this number as needed
-        .send()
-        .await?;
-
-    let starred_repositories: Vec<StarredRepo> = starred_repos
-        .items
-        .into_iter()
-        .map(|repo| StarredRepo {
-            id: repo.id.0,
-            name: repo.name,
-            owner: repo.owner.map(|owner| owner.login).unwrap_or_default(),
-            html_url: repo.html_url.map(|url| url.to_string()).unwrap_or_default(),
-            description: repo.description,
-            stargazers_count: repo.stargazers_count,
-        })
-        .collect();
-
-    let repo_collections: HashMap<i32, Vec<i32>> =
-        get_repo_collections(&state.db_pool, req).await?;
-
     let profile_data = ProfileData {
         github_id: user.id.to_string(),
         name: user.login.to_string(),
         email: user.email.unwrap_or_default(),
-        starred_repositories,
-        repo_collections,
     };
 
     Ok(HttpResponse::Ok().json(profile_data))

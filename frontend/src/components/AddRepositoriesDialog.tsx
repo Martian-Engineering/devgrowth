@@ -1,13 +1,11 @@
 // devgrowth/frontend/src/components/AddRepositoriesDialog.tsx
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  AddRepositoriesForm,
-  Repository,
-} from "@/components/AddRepositoriesForm";
+import { AddRepositoriesForm } from "@/components/AddRepositoriesForm";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { fetchWrapper } from "@/lib/fetchWrapper";
+import { GithubRepo, useProfile } from "@/contexts/ProfileContext";
 
 interface AddRepositoriesDialogProps {
   collectionId: number;
@@ -21,27 +19,20 @@ export function AddRepositoriesDialog({
   onClose,
 }: AddRepositoriesDialogProps) {
   const [activeTab, setActiveTab] = useState("starred");
-  const [starredRepos, setStarredRepos] = useState<Repository[]>([]);
+  const [starredRepos, setStarredRepos] = useState<GithubRepo[]>([]);
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const { profile, refetchStarredRepos, dispatch } = useProfile();
 
   useEffect(() => {
     if (activeTab === "starred") {
-      fetchStarredRepos();
+      refetchStarredRepos();
     }
-  }, [activeTab]);
+  }, [activeTab, refetchStarredRepos]);
 
-  const fetchStarredRepos = async () => {
-    try {
-      const response = await fetchWrapper("/api/github/starred");
-      if (!response.ok) throw new Error("Failed to fetch starred repositories");
-      const data = await response.json();
-      setStarredRepos(data);
-    } catch (error) {
-      console.error("Error fetching starred repositories:", error);
-      // You can add a toast notification here
-    }
-  };
+  useEffect(() => {
+    setStarredRepos(profile?.starred_repositories || []);
+  }, [profile?.starred_repositories]);
 
   const addRepositories = async () => {
     setIsLoading(true);
@@ -70,6 +61,22 @@ export function AddRepositoriesDialog({
             `Failed to add repository ${repo.owner}/${repo.name}`,
           );
         }
+
+        dispatch({
+          type: "ADD_REPOSITORY_TO_COLLECTION",
+          payload: {
+            collectionId: collectionId,
+            repoId: repo.id,
+            repository: {
+              repository_id: repo.id,
+              owner: repo.owner,
+              name: repo.name,
+              created_at: new Date(),
+              updated_at: new Date(),
+              indexed_at: null,
+            },
+          },
+        });
       } catch (error) {
         console.error(error);
         // Optionally, you can handle errors here (e.g., show a toast notification)

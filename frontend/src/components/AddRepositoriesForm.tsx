@@ -24,18 +24,10 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
-
-export interface Repository {
-  id: number;
-  name: string;
-  owner: string;
-  description: string;
-  stargazers_count: number;
-  html_url: string;
-}
+import { GithubRepo, useProfile } from "@/contexts/ProfileContext";
 
 interface AddRepositoriesFormProps {
-  repositories: Repository[];
+  repositories: GithubRepo[];
   rowSelection: Record<string, boolean>;
   setRowSelection: React.Dispatch<
     React.SetStateAction<Record<string, boolean>>
@@ -47,7 +39,15 @@ export function AddRepositoriesForm({
   rowSelection,
   setRowSelection,
 }: AddRepositoriesFormProps) {
-  const columns: ColumnDef<Repository>[] = [
+  const { profile } = useProfile();
+  // TODO: use profileData from the custom hook
+
+  // Use profileData.repo_collections to show repositories that are part of the
+  // collection as selected and disabled
+  //
+  // Add a button in the dropdown to remove the repository from the collection
+  // if it's already in it
+  const columns: ColumnDef<GithubRepo>[] = [
     {
       id: "select",
       header: ({ table }) => (
@@ -67,7 +67,7 @@ export function AddRepositoriesForm({
     },
     {
       header: "Repository",
-      accessorFn: (row: Repository) => `${row.owner}/${row.name}`,
+      accessorFn: (row: GithubRepo) => `${row.owner}/${row.name}`,
     },
     {
       header: "Description",

@@ -1,5 +1,5 @@
 // components/StarredReposList.tsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,15 +17,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { fetchWrapper } from "@/lib/fetchWrapper";
-import { useProfile, GithubRepo } from "@/contexts/ProfileContext";
+import { useProfile, GithubRepo, Collection } from "@/contexts/ProfileContext";
 
 const ITEMS_PER_PAGE = 10;
-
-interface Collection {
-  collection_id: number;
-  name: string;
-}
 
 interface StarredReposListProps {
   repos: GithubRepo[];
@@ -38,41 +32,41 @@ export function StarredReposList({
 }: StarredReposListProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const { profileData, dispatch } = useProfile();
-
-  const fetchCollections = useCallback(async () => {
-    try {
-      const response = await fetchWrapper("/api/collections", {
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("Failed to fetch collections");
-      const data = await response.json();
-      setCollections(data);
-    } catch (error) {
-      console.error("Error fetching collections:", error);
-    }
-  }, []);
+  const { profile, dispatch } = useProfile();
 
   useEffect(() => {
-    fetchCollections();
-  }, [fetchCollections]);
+    setCollections(profile?.collections || []);
+  }, [profile?.collections]);
 
   const toggleRepoInCollection = async (
-    repoId: number,
+    repo: GithubRepo,
     collectionId: number,
   ) => {
     const isInCollection =
-      profileData?.repo_collections[repoId]?.includes(collectionId);
+      profile &&
+      profile.repo_collections &&
+      profile.repo_collections[repo.id]?.includes(collectionId);
     // Optimistic update
     if (isInCollection) {
       dispatch({
         type: "REMOVE_REPOSITORY_FROM_COLLECTION",
-        payload: { repoId, collectionId },
+        payload: { repoId: repo.id, collectionId },
       });
     } else {
       dispatch({
         type: "ADD_REPOSITORY_TO_COLLECTION",
-        payload: { repoId, collectionId },
+        payload: {
+          collectionId,
+          repoId: repo.id,
+          repository: {
+            repository_id: repo.id,
+            owner: repo.owner,
+            name: repo.name,
+            created_at: new Date(),
+            updated_at: new Date(),
+            indexed_at: null,
+          },
+        },
       });
     }
 
@@ -80,12 +74,12 @@ export function StarredReposList({
       let method, url, body;
       if (isInCollection) {
         method = "DELETE";
-        url = `/api/collections/${collectionId}/repositories/${repoId}`;
+        url = `/api/collections/${collectionId}/repositories/${repo.id}`;
         body = null;
       } else {
         method = "POST";
         url = `/api/collections/${collectionId}/repositories`;
-        body = JSON.stringify({ repository_id: repoId });
+        body = JSON.stringify({ repository_id: repo.id });
       }
       const response = await fetch(url, {
         method,
@@ -129,14 +123,17 @@ export function StarredReposList({
                   {collections.map((collection) => (
                     <DropdownMenuCheckboxItem
                       key={collection.collection_id}
-                      checked={profileData?.repo_collections[repo.id]?.includes(
-                        collection.collection_id,
-                      )}
-                      onCheckedChange={() =>
-                        toggleRepoInCollection(
-                          repo.id,
-                          collection.collection_id,
+                      checked={
+                        !!(
+                          profile &&
+                          profile.repo_collections &&
+                          profile.repo_collections[repo.id]?.includes(
+                            collection.collection_id,
+                          )
                         )
+                      }
+                      onCheckedChange={() =>
+                        toggleRepoInCollection(repo, collection.collection_id)
                       }
                     >
                       {collection.name}

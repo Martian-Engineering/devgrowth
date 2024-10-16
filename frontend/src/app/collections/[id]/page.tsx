@@ -19,6 +19,7 @@ import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { DateRange } from "react-day-picker";
 import { fetchWrapper } from "@/lib/fetchWrapper";
+import { useProfile } from "@/contexts/ProfileContext";
 
 interface Collection {
   collection_id: number;
@@ -52,6 +53,7 @@ export default function CollectionPage() {
   const [isAddReposDialogOpen, setIsAddReposDialogOpen] = useState(false);
   const [growthData, setGrowthData] = useState<GrowthAccountingData[]>([]);
   const [filteredData, setFilteredData] = useState<GrowthAccountingData[]>([]);
+  const { profile, dispatch } = useProfile();
 
   const today = new Date();
   const lastMonth = addMonths(today, -1);
@@ -121,6 +123,18 @@ export default function CollectionPage() {
   }, [id]);
 
   useEffect(() => {
+    if (profile?.collections) {
+      const collection = profile.collections.find(
+        (collection) => collection.collection_id === Number(id),
+      );
+      if (collection) {
+        console.log("Setting collection from context", collection);
+        setCollection(collection);
+      }
+    }
+  }, [id, profile?.collections]);
+
+  useEffect(() => {
     fetchCollection();
     fetchGrowthAccountingData();
   }, [id, fetchCollection, fetchGrowthAccountingData]);
@@ -140,6 +154,10 @@ export default function CollectionPage() {
         },
       );
       if (!response.ok) throw new Error("Failed to remove repository");
+      dispatch({
+        type: "REMOVE_REPOSITORY_FROM_COLLECTION",
+        payload: { collectionId: Number(id), repoId: repoId },
+      });
       fetchCollection();
       fetchGrowthAccountingData();
       toast({

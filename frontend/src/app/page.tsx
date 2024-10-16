@@ -4,9 +4,9 @@
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { StarredReposList } from "@/components/StarredReposList";
-import { CollectionsList, Collection } from "@/components/CollectionsList";
+import { CollectionsList } from "@/components/CollectionsList";
 import { fetchWrapper } from "@/lib/fetchWrapper";
 import {
   Dialog,
@@ -23,12 +23,12 @@ import { useProfile } from "@/contexts/ProfileContext";
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const { profileData, refetchProfile } = useProfile();
+  const { profile, refetchProfile, refetchCollections, dispatch } =
+    useProfile();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [collectionsRefreshTrigger, setCollectionsRefreshTrigger] = useState(0);
 
   const handleCreateCollection = async () => {
     setIsSubmitting(true);
@@ -48,12 +48,12 @@ export default function Home() {
         throw new Error("Failed to create collection");
       }
 
-      console.log("Fetched collections:", response);
+      dispatch({ type: "CREATE_COLLECTION", payload: await response.json() });
 
       // Close the dialog and refresh the data
       setIsDialogOpen(false);
-      setCollectionsRefreshTrigger((prev) => prev + 1);
-      refetchProfile();
+      // TODO: Try with and without this
+      refetchCollections();
     } catch (error) {
       console.error("Error creating collection:", error);
     } finally {
@@ -63,21 +63,8 @@ export default function Home() {
     }
   };
 
-  // TODO: Implement a Collections Context and then do something with this
-  const handleCollectionsUpdated = useCallback(
-    (updatedCollections: Collection[]) => {
-      console.log("Collections updated:", updatedCollections);
-      // Update profileData with the new collections if needed
-      // setProfileData((prevData) => (prevData ? { ...prevData } : null));
-      refetchProfile();
-    },
-    [refetchProfile],
-  );
-
   useEffect(() => {
     if (status === "authenticated") {
-      // TODO: Implement fetch for starred repos and profile data (repoCollections) as separate endpoints
-      // TODO: Optimistic update of UI
       refetchProfile();
     }
   }, [status, refetchProfile]);
@@ -96,16 +83,20 @@ export default function Home() {
             <Link href="/api/auth/signin">Sign In</Link>
           </Button>
         </div>
-      ) : profileData ? (
+      ) : profile ? (
         <div className="w-full max-w-7xl">
           <h1 className="text-3xl font-semibold mb-8">
-            Welcome, {profileData.name || profileData.login}!
+            Welcome,{" "}
+            {profile &&
+              profile.account &&
+              (profile.account.name || profile.account.login)}
+            !
           </h1>
           <div className="flex flex-col md:flex-row gap-8">
             <div className="w-full md:w-1/2">
               <StarredReposList
-                repos={profileData.starred_repositories}
-                onCollectionUpdate={refetchProfile}
+                repos={profile.starred_repositories || []}
+                onCollectionUpdate={refetchCollections}
               />
             </div>
             <div className="w-full md:w-1/2">
@@ -116,8 +107,7 @@ export default function Home() {
                 </Button>
               </div>
               <CollectionsList
-                refreshTrigger={collectionsRefreshTrigger}
-                onCollectionsUpdated={handleCollectionsUpdated}
+                collections={(profile && profile.collections) || []}
               />
             </div>
           </div>
