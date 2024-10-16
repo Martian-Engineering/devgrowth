@@ -11,8 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AddRepositoryForm } from "@/components/AddRepositoryForm";
-import { AddRepositoriesDialog } from "@/components/AddRepositoriesDialog";
+import { ManageRepositoriesDialog } from "@/components/ManageRepositoriesDialog";
 import { toast } from "@/hooks/use-toast";
 import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
 import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
@@ -49,8 +48,7 @@ interface GrowthAccountingData {
 export default function CollectionPage() {
   const { id } = useParams();
   const [collection, setCollection] = useState<Collection | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isAddReposDialogOpen, setIsAddReposDialogOpen] = useState(false);
+  const [isManageReposDialogOpen, setIsManageReposDialogOpen] = useState(false);
   const [growthData, setGrowthData] = useState<GrowthAccountingData[]>([]);
   const [filteredData, setFilteredData] = useState<GrowthAccountingData[]>([]);
   const { profile, dispatch } = useProfile();
@@ -77,9 +75,8 @@ export default function CollectionPage() {
     [growthData],
   );
 
-  const handleRepositoriesAdded = () => {
-    setIsAddReposDialogOpen(false);
-    fetchCollection();
+  const handleRepositoriesChanged = () => {
+    setIsManageReposDialogOpen(false);
     fetchGrowthAccountingData();
   };
 
@@ -128,7 +125,6 @@ export default function CollectionPage() {
         (collection) => collection.collection_id === Number(id),
       );
       if (collection) {
-        console.log("Setting collection from context", collection);
         setCollection(collection);
       }
     }
@@ -138,12 +134,6 @@ export default function CollectionPage() {
     fetchCollection();
     fetchGrowthAccountingData();
   }, [id, fetchCollection, fetchGrowthAccountingData]);
-
-  const handleRepositoryAdded = () => {
-    setIsDialogOpen(false);
-    fetchCollection();
-    fetchGrowthAccountingData();
-  };
 
   const handleRemoveRepository = async (repoId: number) => {
     try {
@@ -158,7 +148,6 @@ export default function CollectionPage() {
         type: "REMOVE_REPOSITORY_FROM_COLLECTION",
         payload: { collectionId: Number(id), repoId: repoId },
       });
-      fetchCollection();
       fetchGrowthAccountingData();
       toast({
         title: "Repository removed",
@@ -189,24 +178,9 @@ export default function CollectionPage() {
         />
       )}
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogTrigger asChild>
-          <Button>Add Repository</Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Repository to Collection</DialogTitle>
-          </DialogHeader>
-          <AddRepositoryForm
-            onRepositoryAdded={handleRepositoryAdded}
-            collectionId={collection.collection_id}
-          />
-        </DialogContent>
-      </Dialog>
-
       <Dialog
-        open={isAddReposDialogOpen}
-        onOpenChange={setIsAddReposDialogOpen}
+        open={isManageReposDialogOpen}
+        onOpenChange={setIsManageReposDialogOpen}
       >
         <DialogTrigger asChild>
           <Button className="mt-4">Add Repositories</Button>
@@ -215,10 +189,10 @@ export default function CollectionPage() {
           <DialogHeader>
             <DialogTitle>Add Repositories to Collection</DialogTitle>
           </DialogHeader>
-          <AddRepositoriesDialog
+          <ManageRepositoriesDialog
             collectionId={collection?.collection_id || 0}
-            onRepositoriesAdded={handleRepositoriesAdded}
-            onClose={() => setIsAddReposDialogOpen(false)}
+            onRepositoriesChanged={handleRepositoriesChanged}
+            onClose={() => setIsManageReposDialogOpen(false)}
           />
         </DialogContent>
       </Dialog>

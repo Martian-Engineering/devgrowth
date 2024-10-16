@@ -1,5 +1,5 @@
-// devgrowth/frontend/src/components/AddRepositoriesForm.tsx
-import React from "react";
+// devgrowth/frontend/src/components/ManageRepositoriesForm.tsx
+import React, { useState, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -26,44 +26,72 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { GithubRepo, useProfile } from "@/contexts/ProfileContext";
 
-interface AddRepositoriesFormProps {
+interface ManageRepositoriesFormProps {
+  collectionId: number;
   repositories: GithubRepo[];
-  rowSelection: Record<string, boolean>;
-  setRowSelection: React.Dispatch<
-    React.SetStateAction<Record<string, boolean>>
-  >;
+  onSelectionChange: (selectedRepos: GithubRepo[]) => void;
 }
 
-export function AddRepositoriesForm({
+export function ManageRepositoriesForm({
+  collectionId,
   repositories,
-  rowSelection,
-  setRowSelection,
-}: AddRepositoriesFormProps) {
+  onSelectionChange,
+}: ManageRepositoriesFormProps) {
   const { profile } = useProfile();
-  // TODO: use profileData from the custom hook
+  const [selection, setSelection] = useState<Set<number>>(new Set());
 
-  // Use profileData.repo_collections to show repositories that are part of the
-  // collection as selected and disabled
-  //
-  // Add a button in the dropdown to remove the repository from the collection
-  // if it's already in it
+  useEffect(() => {
+    const collections = profile?.collections || [];
+    const collection = collections.find(
+      (collection) => collection.collection_id === collectionId,
+    ) || { repositories: [] };
+    const currentCollectionRepos = collection.repositories.map(
+      ({ repository_id }) => repository_id,
+    );
+    setSelection(new Set(currentCollectionRepos));
+  }, [profile?.collections, collectionId]);
+
+  const toggleSelection = (repoId: number) => {
+    const newSelection = new Set(selection);
+    if (newSelection.has(repoId)) {
+      newSelection.delete(repoId);
+    } else {
+      newSelection.add(repoId);
+    }
+    setSelection(newSelection);
+    onSelectionChange(repositories.filter((repo) => newSelection.has(repo.id)));
+  };
+
   const columns: ColumnDef<GithubRepo>[] = [
     {
       id: "select",
-      header: ({ table }) => (
+      header: () => (
         <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          checked={
+            repositories.length > 0 && selection.size === repositories.length
+          }
+          onCheckedChange={(value) => {
+            const newSelection: Set<number> = value
+              ? new Set(repositories.map((repo) => repo.id))
+              : new Set();
+            setSelection(newSelection);
+            onSelectionChange(
+              repositories.filter((repo) => newSelection.has(repo.id)),
+            );
+          }}
           aria-label="Select all"
         />
       ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="Select row"
-        />
-      ),
+      cell: ({ row }) => {
+        const repo = row.original;
+        return (
+          <Checkbox
+            checked={selection.has(repo.id)}
+            onCheckedChange={() => toggleSelection(repo.id)}
+            aria-label="Select row"
+          />
+        );
+      },
     },
     {
       header: "Repository",
@@ -106,10 +134,6 @@ export function AddRepositoriesForm({
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    onRowSelectionChange: setRowSelection,
-    state: {
-      rowSelection,
-    },
   });
 
   return (
@@ -181,7 +205,7 @@ export function AddRepositoriesForm({
             table.setPageSize(Number(e.target.value));
           }}
         >
-          {[10, 20, 30, 40, 50].map((pageSize) => (
+          {[5, 10].map((pageSize) => (
             <option key={pageSize} value={pageSize}>
               Show {pageSize}
             </option>
