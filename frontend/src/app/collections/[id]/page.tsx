@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AddRepositoryForm } from "@/components/AddRepositoryForm";
+import { AddRepositoriesDialog } from "@/components/AddRepositoriesDialog";
 import { toast } from "@/hooks/use-toast";
 import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
 import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
@@ -47,6 +48,7 @@ export default function CollectionPage() {
   const { id } = useParams();
   const [collection, setCollection] = useState<Collection | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddReposDialogOpen, setIsAddReposDialogOpen] = useState(false);
   const [growthData, setGrowthData] = useState<GrowthAccountingData[]>([]);
   const [filteredData, setFilteredData] = useState<GrowthAccountingData[]>([]);
 
@@ -76,6 +78,12 @@ export default function CollectionPage() {
     fetchCollection();
     fetchGrowthAccountingData();
   }, [id]);
+
+  const handleRepositoriesAdded = () => {
+    setIsAddReposDialogOpen(false);
+    fetchCollection();
+    fetchGrowthAccountingData();
+  };
 
   const fetchCollection = async () => {
     try {
@@ -173,6 +181,25 @@ export default function CollectionPage() {
           <AddRepositoryForm
             onRepositoryAdded={handleRepositoryAdded}
             collectionId={collection.collection_id}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isAddReposDialogOpen}
+        onOpenChange={setIsAddReposDialogOpen}
+      >
+        <DialogTrigger asChild>
+          <Button className="mt-4">Add Repositories</Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[825px]">
+          <DialogHeader>
+            <DialogTitle>Add Repositories to Collection</DialogTitle>
+          </DialogHeader>
+          <AddRepositoriesDialog
+            collectionId={collection?.collection_id || 0}
+            onRepositoriesAdded={handleRepositoriesAdded}
+            onClose={() => setIsAddReposDialogOpen(false)}
           />
         </DialogContent>
       </Dialog>
