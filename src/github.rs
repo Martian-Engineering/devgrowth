@@ -105,3 +105,39 @@ pub async fn get_organization_repositories(
 
     Ok(HttpResponse::Ok().json(org_repositories))
 }
+
+pub async fn search_repositories(
+    req: HttpRequest,
+    query: web::Query<SearchQuery>,
+) -> Result<HttpResponse, AppError> {
+    let github_client = get_github_client(&req)?;
+
+    let search_results = github_client
+        .search()
+        .repositories(&query.q)
+        .sort("updated")
+        .order("desc")
+        .per_page(100)
+        .send()
+        .await?;
+
+    let search_repositories: Vec<GithubRepo> = search_results
+        .items
+        .into_iter()
+        .map(|repo| GithubRepo {
+            id: repo.id.0,
+            name: repo.name,
+            owner: repo.owner.map(|owner| owner.login).unwrap_or_default(),
+            html_url: repo.html_url.map(|url| url.to_string()).unwrap_or_default(),
+            description: repo.description,
+            stargazers_count: repo.stargazers_count,
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(search_repositories))
+}
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    q: String,
+}

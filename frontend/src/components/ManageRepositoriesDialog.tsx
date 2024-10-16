@@ -25,17 +25,20 @@ export function ManageRepositoriesDialog({
   onClose,
 }: ManageRepositoriesDialogProps) {
   const [activeTab, setActiveTab] = useState("starred");
-  const [repos, setRepos] = useState<GithubRepo[]>([]);
+  const [starredRepos, setStarredRepos] = useState<GithubRepo[]>([]);
+  const [orgRepos, setOrgRepos] = useState<GithubRepo[]>([]);
+  const [searchRepos, setSearchRepos] = useState<GithubRepo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { profile, dispatch } = useProfile();
   const [selectedRepos, setSelectedRepos] = useState<GithubRepo[]>([]);
   const [orgName, setOrgName] = useState("");
-  const [orgRepos, setOrgRepos] = useState<GithubRepo[]>([]);
   const [isFetchingOrg, setIsFetchingOrg] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     if (activeTab === "starred") {
-      setRepos(profile?.starred_repositories || []);
+      setStarredRepos(profile?.starred_repositories || []);
     }
   }, [activeTab, profile?.starred_repositories]);
 
@@ -126,7 +129,6 @@ export function ManageRepositoriesDialog({
       if (response.ok) {
         const data = await response.json();
         setOrgRepos(data);
-        setRepos(data);
       } else {
         toast({
           title: "Error",
@@ -146,6 +148,35 @@ export function ManageRepositoriesDialog({
     }
   };
 
+  const searchRepositories = async () => {
+    if (!searchTerm) return;
+    setIsSearching(true);
+    try {
+      const response = await fetchWrapper(
+        `/api/github/search?q=${encodeURIComponent(searchTerm)}`,
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setSearchRepos(data);
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to search repositories.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error searching repositories:", error);
+      toast({
+        title: "Error",
+        description: "An error occurred while searching repositories.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab}>
       <TabsList>
@@ -156,7 +187,7 @@ export function ManageRepositoriesDialog({
       <TabsContent value="starred">
         <ManageRepositoriesTable
           collectionId={collectionId}
-          repositories={repos}
+          repositories={starredRepos}
           onSelectionChange={setSelectedRepos}
         />
       </TabsContent>
@@ -191,8 +222,34 @@ export function ManageRepositoriesDialog({
         </div>
       </TabsContent>
       <TabsContent value="search">
-        <p>Repository search will be implemented here.</p>
-        {/* Implement repository search view */}
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="searchTerm">Search Repositories</Label>
+            <Input
+              id="searchTerm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Enter search term"
+            />
+          </div>
+          <Button onClick={searchRepositories} disabled={isSearching}>
+            {isSearching ? (
+              <>
+                <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                Searching...
+              </>
+            ) : (
+              "Search"
+            )}
+          </Button>
+          {searchRepos.length > 0 && (
+            <ManageRepositoriesTable
+              collectionId={collectionId}
+              repositories={searchRepos}
+              onSelectionChange={setSelectedRepos}
+            />
+          )}
+        </div>
       </TabsContent>
       <DialogFooter>
         <Button onClick={onClose} variant="outline" disabled={isLoading}>

@@ -90,7 +90,8 @@ async fn main() -> io::Result<()> {
                             .route(
                                 "/orgs/{org}/repos",
                                 web::get().to(github::get_organization_repositories),
-                            ),
+                            )
+                            .route("/search", web::get().to(github::search_repositories)),
                     )
                     .service(
                         web::scope("/repositories")
