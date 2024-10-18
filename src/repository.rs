@@ -1,6 +1,10 @@
 use crate::error::AppError;
 use crate::github::{get_github_client, get_github_token};
-use crate::growth_accounting::{mau_growth_accounting, MAUGrowthAccountingResult};
+use crate::growth_accounting::{
+    ltv_cohorts_cumulative, mau_growth_accounting, mau_retention_by_cohort, mrr_growth_accounting,
+    LTVCohortsCumulativeResult, MAUGrowthAccountingResult, MAURetentionByCohortResult,
+    MRRGrowthAccountingResult,
+};
 use crate::job_queue::Job;
 use crate::AppState;
 use actix_web::web::Query;
@@ -411,10 +415,18 @@ pub async fn get_repository_ga(
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GrowthAccountingResult {
+    mau_growth_accounting: Vec<MAUGrowthAccountingResult>,
+    mrr_growth_accounting: Vec<MRRGrowthAccountingResult>,
+    mau_retention_by_cohort: Vec<MAURetentionByCohortResult>,
+    ltv_cumulative_cohort: Vec<LTVCohortsCumulativeResult>,
+}
+
 async fn fetch_growth_accounting(
     pool: &PgPool,
     repository_id: i32,
-) -> Result<Vec<MAUGrowthAccountingResult>, sqlx::Error> {
+) -> Result<GrowthAccountingResult, sqlx::Error> {
     let dau_query = format!(
         r#"
         SELECT
@@ -433,7 +445,15 @@ async fn fetch_growth_accounting(
         repository_id
     );
 
-    let results = mau_growth_accounting(pool, dau_query).await?;
+    let mau_ga = mau_growth_accounting(pool, dau_query.clone()).await?;
+    let mrr_ga = mrr_growth_accounting(pool, dau_query.clone()).await?;
+    let ltv_cumulative = ltv_cohorts_cumulative(pool, dau_query.clone()).await?;
+    let mau_retention = mau_retention_by_cohort(pool, dau_query.clone()).await?;
 
-    Ok(results)
+    Ok(GrowthAccountingResult {
+        mau_growth_accounting: mau_ga,
+        mrr_growth_accounting: mrr_ga,
+        mau_retention_by_cohort: mau_retention,
+        ltv_cumulative_cohort: ltv_cumulative,
+    })
 }
