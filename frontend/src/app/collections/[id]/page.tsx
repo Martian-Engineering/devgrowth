@@ -195,33 +195,39 @@ export default function CollectionPage() {
   if (!collection) return <div>Loading...</div>;
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto p-4 space-y-4">
       <h1 className="text-2xl font-bold mb-4">{collection.name}</h1>
       <p className="mb-4">{collection.description}</p>
 
-      {growthData.mau_growth_accounting.length > 0 && (
-        <>
-          <DatePickerWithRange
-            className="w-[300px]"
-            initialDateRange={initialDateRange}
-            onDateRangeChange={handleDateRangeChange}
-          />
-          <MAUGrowthAccountingChart data={filteredData.mau_growth_accounting} />
-          <MRRGrowthAccountingChart data={filteredData.mrr_growth_accounting} />
-          <CohortChart
-            data={filteredData.ltv_cumulative_cohort}
-            chartType={ChartType.LogoRetention}
-          />
-          <CohortChart
-            data={filteredData.ltv_cumulative_cohort}
-            chartType={ChartType.CohortLTV}
-          />
-          <CohortChart
-            data={filteredData.ltv_cumulative_cohort}
-            chartType={ChartType.CommitRetention}
-          />
-        </>
-      )}
+      {growthData &&
+        growthData.mau_growth_accounting &&
+        growthData.mau_growth_accounting.length > 0 && (
+          <>
+            <DatePickerWithRange
+              className="w-[300px]"
+              initialDateRange={initialDateRange}
+              onDateRangeChange={handleDateRangeChange}
+            />
+            <MAUGrowthAccountingChart
+              data={filteredData.mau_growth_accounting}
+            />
+            <MRRGrowthAccountingChart
+              data={filteredData.mrr_growth_accounting}
+            />
+            <CohortChart
+              data={filteredData.ltv_cumulative_cohort}
+              chartType={ChartType.LogoRetention}
+            />
+            <CohortChart
+              data={filteredData.ltv_cumulative_cohort}
+              chartType={ChartType.CohortLTV}
+            />
+            <CohortChart
+              data={filteredData.ltv_cumulative_cohort}
+              chartType={ChartType.CommitRetention}
+            />
+          </>
+        )}
 
       <Dialog
         open={isManageReposDialogOpen}

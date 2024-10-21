@@ -20,11 +20,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { useProfile } from "@/contexts/ProfileContext";
+import MySidebar from "@/components/Sidebar";
 
-export default function Home() {
-  const { data: session, status } = useSession();
-  const { profile, refetchProfile, refetchCollections, dispatch } =
-    useProfile();
+function Main() {
+  const { profile, refetchCollections, dispatch } = useProfile();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
@@ -63,6 +62,92 @@ export default function Home() {
     }
   };
 
+  return (
+    <div className="w-full max-w-6xl">
+      <h1 className="text-3xl font-semibold mb-8">
+        Welcome,{" "}
+        {profile &&
+          profile.account &&
+          (profile.account.name || profile.account.login)}
+        !
+      </h1>
+      <div className="flex flex-col md:flex-row gap-8">
+        <div className="w-full md:w-1/2">
+          <StarredReposList
+            repos={profile.starred_repositories || []}
+            onCollectionUpdate={refetchCollections}
+          />
+        </div>
+        <div className="w-full md:w-1/2">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-semibold">Collections</h2>
+            <Button onClick={() => setIsDialogOpen(true)}>
+              Create New Collection
+            </Button>
+          </div>
+          <CollectionsList
+            collections={(profile && profile.collections) || []}
+          />
+        </div>
+      </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Collection</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">
+                Name
+              </Label>
+              <Input
+                id="name"
+                value={newCollectionName}
+                onChange={(e) => setNewCollectionName(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="description" className="text-right">
+                Description
+              </Label>
+              <Textarea
+                id="description"
+                value={newCollectionDescription}
+                onChange={(e) => setNewCollectionDescription(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateCollection}
+              disabled={!newCollectionName || isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+export default function Home() {
+  const { data: session, status } = useSession();
+  const { profile, refetchProfile } = useProfile();
+
   useEffect(() => {
     if (status === "authenticated") {
       refetchProfile();
@@ -73,7 +158,7 @@ export default function Home() {
     return <div>Loading...</div>;
   }
   return (
-    <main className="flex min-h-screen flex-col items-center p-24">
+    <>
       {!session ? (
         <div className="text-center mt-4">
           <p className="mb-4">
@@ -84,92 +169,14 @@ export default function Home() {
           </Button>
         </div>
       ) : profile ? (
-        <div className="w-full max-w-7xl">
-          <h1 className="text-3xl font-semibold mb-8">
-            Welcome,{" "}
-            {profile &&
-              profile.account &&
-              (profile.account.name || profile.account.login)}
-            !
-          </h1>
-          <div className="flex flex-col md:flex-row gap-8">
-            <div className="w-full md:w-1/2">
-              <StarredReposList
-                repos={profile.starred_repositories || []}
-                onCollectionUpdate={refetchCollections}
-              />
-            </div>
-            <div className="w-full md:w-1/2">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-semibold">Collections</h2>
-                <Button onClick={() => setIsDialogOpen(true)}>
-                  Create New Collection
-                </Button>
-              </div>
-              <CollectionsList
-                collections={(profile && profile.collections) || []}
-              />
-            </div>
-          </div>
-
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Collection</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="name" className="text-right">
-                    Name
-                  </Label>
-                  <Input
-                    id="name"
-                    value={newCollectionName}
-                    onChange={(e) => setNewCollectionName(e.target.value)}
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="description" className="text-right">
-                    Description
-                  </Label>
-                  <Textarea
-                    id="description"
-                    value={newCollectionDescription}
-                    onChange={(e) =>
-                      setNewCollectionDescription(e.target.value)
-                    }
-                    className="col-span-3"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateCollection}
-                  disabled={!newCollectionName || isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create"
-                  )}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+        <MySidebar>
+          <main className="flex min-h-screen flex-col items-center p-24">
+            <Main />
+          </main>
+        </MySidebar>
       ) : (
         <div>Loading profile data...</div>
       )}
-    </main>
+    </>
   );
 }

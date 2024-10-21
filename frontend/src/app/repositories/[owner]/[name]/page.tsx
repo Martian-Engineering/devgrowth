@@ -7,9 +7,16 @@ import {
   MAUGrowthAccountingChart,
   MAUGrowthAccountingData,
 } from "@/components/MAUGrowthAccountingChart";
-import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
-import { DateRange } from "react-day-picker";
+import {
+  MRRGrowthAccountingChart,
+  MRRGrowthAccountingData,
+} from "@/components/MRRGrowthAccountingChart";
+import {
+  CohortChart,
+  ChartType,
+  CohortDataItem,
+} from "@/components/CohortChart";
+import { GADateRange } from "@/components/GADateRange";
 import { fetchWrapper } from "@/lib/fetchWrapper";
 
 interface RepositoryMetadata {
@@ -23,33 +30,31 @@ interface RepositoryMetadata {
   github_url: string;
 }
 
+interface GrowthAccountingResponse {
+  mau_growth_accounting: MAUGrowthAccountingData[];
+  mrr_growth_accounting: MRRGrowthAccountingData[];
+  ltv_cumulative_cohort: CohortDataItem[];
+}
+
 export default function RepositoryPage() {
   const params = useParams();
   const [metadata, setMetadata] = useState<RepositoryMetadata | null>(null);
-  const [growthData, setGrowthData] = useState<MAUGrowthAccountingData[]>([]);
-  const [filteredData, setFilteredData] = useState(growthData);
-
-  const today = new Date();
-  const lastMonth = addMonths(today, -1);
-  const initialDateRange = {
-    from: startOfMonth(subYears(lastMonth, 1)),
-    to: endOfMonth(lastMonth),
-  };
+  const [growthData, setGrowthData] = useState<GrowthAccountingResponse>({
+    mau_growth_accounting: [],
+    mrr_growth_accounting: [],
+    ltv_cumulative_cohort: [],
+  });
+  const [filteredData, setFilteredData] = useState<GrowthAccountingResponse>({
+    mau_growth_accounting: [],
+    mrr_growth_accounting: [],
+    ltv_cumulative_cohort: [],
+  });
 
   const handleDateRangeChange = useCallback(
-    (range: DateRange | undefined) => {
-      if (range?.from && range?.to) {
-        console.log(range.from, range.to);
-        const filtered = growthData.filter((item) => {
-          const itemDate = toZonedTime(new Date(item.month), "UTC");
-          return itemDate >= range.from && itemDate <= range.to;
-        });
-        setFilteredData(filtered);
-      } else {
-        setFilteredData(growthData);
-      }
+    (filteredData: GrowthAccountingResponse) => {
+      setFilteredData(filteredData);
     },
-    [growthData],
+    [],
   );
 
   useEffect(() => {
@@ -62,8 +67,8 @@ export default function RepositoryPage() {
         .then((response) => response.json())
         .then((data) => {
           console.log(data);
-          setGrowthData(data.mau_growth_accounting);
-          setFilteredData(data.mau_growth_accounting);
+          setGrowthData(data);
+          setFilteredData(data);
         });
     }
   }, [params.owner, params.name]);
@@ -98,9 +103,34 @@ export default function RepositoryPage() {
         </CardContent>
       </Card>
 
-      {growthData.length > 0 && (
-        <MAUGrowthAccountingChart data={filteredData} />
-      )}
+      {growthData &&
+        growthData.mau_growth_accounting &&
+        growthData.mau_growth_accounting.length > 0 && (
+          <>
+            <GADateRange
+              onDateRangeChange={handleDateRangeChange}
+              growthData={growthData}
+            />
+            <MAUGrowthAccountingChart
+              data={filteredData.mau_growth_accounting}
+            />
+            <MRRGrowthAccountingChart
+              data={filteredData.mrr_growth_accounting}
+            />
+            <CohortChart
+              data={filteredData.ltv_cumulative_cohort}
+              chartType={ChartType.LogoRetention}
+            />
+            <CohortChart
+              data={filteredData.ltv_cumulative_cohort}
+              chartType={ChartType.CohortLTV}
+            />
+            <CohortChart
+              data={filteredData.ltv_cumulative_cohort}
+              chartType={ChartType.CommitRetention}
+            />
+          </>
+        )}
     </div>
   );
 }

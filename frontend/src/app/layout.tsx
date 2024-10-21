@@ -20,10 +20,8 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <Provider>
-          <Navbar />
-          <main className="max-w-7x1 mx-auto py-6 sm:px-6 lg:px-8">
-            {children}
-          </main>
+          {/* <Navbar /> */}
+          {children}
         </Provider>
       </body>
     </html>
