@@ -99,11 +99,18 @@ export function StarredReposList({
     }
   };
 
-  const totalPages = Math.ceil(repos.length / ITEMS_PER_PAGE);
-  const paginatedRepos = repos.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
+  const [totalPages, setTotalPages] = useState(0);
+  const [paginatedRepos, setPaginatedRepos] = useState<GithubRepo[]>([]);
+
+  useEffect(() => {
+    setTotalPages(Math.ceil(repos.length / ITEMS_PER_PAGE));
+    setPaginatedRepos(
+      repos.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE,
+      ),
+    );
+  }, [currentPage, repos]);
 
   return (
     <div>
