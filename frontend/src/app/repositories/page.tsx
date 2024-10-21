@@ -84,7 +84,7 @@ export default function RepositoriesPage() {
                   </TableCell>
                   <TableCell>
                     <Button asChild>
-                      <Link href={`/repository/${repo.owner}/${repo.name}`}>
+                      <Link href={`/repositories/${repo.owner}/${repo.name}`}>
                         View
                       </Link>
                     </Button>
