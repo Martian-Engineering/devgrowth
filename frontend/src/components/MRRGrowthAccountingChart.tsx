@@ -1,4 +1,4 @@
-// components/GrowthAccountingChart2.tsx
+// components/MAUGrowthAccountingChart.tsx
 "use client";
 
 import React from "react";
@@ -20,8 +20,6 @@ import { ChartContainer } from "@/components/ui/chart";
 import { parse, format } from "date-fns";
 import "chartjs-adapter-date-fns";
 import { toZonedTime } from "date-fns-tz";
-import { DateRange } from "react-day-picker";
-import { DatePickerWithRange } from "./ui/date-picker";
 
 ChartJS.register(
   CategoryScale,
@@ -33,19 +31,19 @@ ChartJS.register(
   TimeSeriesScale,
 );
 
-interface GrowthAccountingData {
+export interface MRRGrowthAccountingData {
   month: Date;
-  mau: number;
+  rev: number;
   retained: number;
   new: number;
   resurrected: number;
+  expansion: number;
   churned: number;
+  contraction: number;
 }
 
-interface GrowthAccountingChartProps {
-  data: GrowthAccountingData[];
-  initialDateRange: DateRange;
-  onDateRangeChange: (range: DateRange | undefined) => void;
+interface MRRGrowthAccountingChartProps {
+  data: MRRGrowthAccountingData[];
 }
 
 const chartConfig = {
@@ -61,17 +59,23 @@ const chartConfig = {
     label: "Resurrected",
     color: "#f9a03f",
   },
+  expansion: {
+    label: "Expansion",
+    color: "#ffcc00",
+  },
   churned: {
     label: "Churned",
     color: "#e66666",
   },
+  contraction: {
+    label: "Contraction",
+    color: "#ff6666",
+  },
 };
 
-export function GrowthAccountingChart({
+export function MRRGrowthAccountingChart({
   data,
-  initialDateRange,
-  onDateRangeChange,
-}: GrowthAccountingChartProps) {
+}: MRRGrowthAccountingChartProps) {
   const chartData: ChartData<"bar"> = {
     labels: data.map((item) => item.month),
     datasets: [
@@ -91,9 +95,19 @@ export function GrowthAccountingChart({
         backgroundColor: chartConfig.retained.color,
       },
       {
+        label: chartConfig.expansion.label,
+        data: data.map((item) => item.expansion),
+        backgroundColor: chartConfig.expansion.color,
+      },
+      {
         label: chartConfig.churned.label,
-        data: data.map((item) => item.churned), // Already negative, no need to negate
+        data: data.map((item) => item.churned),
         backgroundColor: chartConfig.churned.color,
+      },
+      {
+        label: chartConfig.contraction.label,
+        data: data.map((item) => item.contraction),
+        backgroundColor: chartConfig.contraction.color,
       },
     ],
   };
@@ -139,8 +153,8 @@ export function GrowthAccountingChart({
             const label = context.dataset.label || "";
             const value = context.parsed.y;
             const dataIndex = context.dataIndex;
-            const mau = data[dataIndex].mau; // Assuming your data array is in scope
-            return `${label}: ${Math.abs(value)} (MAU: ${mau})`;
+            const rev = data[dataIndex].rev;
+            return `${label}: ${Math.abs(value)} (Total: ${rev})`;
           },
         },
       },
@@ -150,12 +164,7 @@ export function GrowthAccountingChart({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Growth Accounting</CardTitle>
-        <DatePickerWithRange
-          className="w-[300px]"
-          initialDateRange={initialDateRange}
-          onDateRangeChange={onDateRangeChange}
-        />
+        <CardTitle>Monthly Commits</CardTitle>
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[400px]">

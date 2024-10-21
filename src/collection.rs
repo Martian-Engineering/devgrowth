@@ -1,14 +1,20 @@
 use crate::auth_utils::get_account_id;
 use crate::error::AppError;
-use crate::growth_accounting::mau_growth_accounting;
+use crate::growth_accounting::{
+    ltv_cohorts_cumulative, mau_growth_accounting, mau_retention_by_cohort, mrr_growth_accounting,
+    LTVCohortsCumulativeResult, MAUGrowthAccountingResult, MAURetentionByCohortResult,
+    MRRGrowthAccountingResult,
+};
 use crate::repository::{upsert_repository, NewRepository, Repository};
 use crate::AppState;
 use actix_web::web::BytesMut;
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
+use log::error;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::PgPool;
 
 #[derive(Serialize, Deserialize)]
 pub struct Collection {
@@ -465,6 +471,14 @@ pub async fn remove_repository_from_collection(
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GrowthAccountingResult {
+    mau_growth_accounting: Vec<MAUGrowthAccountingResult>,
+    mrr_growth_accounting: Vec<MRRGrowthAccountingResult>,
+    mau_retention_by_cohort: Vec<MAURetentionByCohortResult>,
+    ltv_cumulative_cohort: Vec<LTVCohortsCumulativeResult>,
+}
+
 pub async fn get_collection_growth_accounting(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -487,31 +501,54 @@ pub async fn get_collection_growth_accounting(
 
     match collection {
         Some(collection) if collection.owner_id == account_id => {
-            let dau_query = format!(
-                r#"
-                SELECT
-                    author AS user_id,
-                    date_trunc('day', "date") AS dt,
-                    count(*) AS inc_amt
-                FROM
-                    "commit" c
-                    LEFT JOIN collection_repository cr ON cr.repository_id = c.repository_id
-                WHERE
-                    cr.collection_id = {}
-                GROUP BY
-                    1,
-                    2
-                "#,
-                collection_id
-            );
-
-            let results = mau_growth_accounting(&state.db_pool, dau_query).await?;
-
-            Ok(HttpResponse::Ok().json(results))
+            match fetch_growth_accounting(&state.db_pool, collection_id).await {
+                Ok(results) => Ok(HttpResponse::Ok().json(results)),
+                Err(e) => {
+                    error!("Error fetching growth accounting data: {:?}", e);
+                    Err(AppError::InternalServerError(
+                        "An error occurred while fetching growth accounting data".to_string(),
+                    ))
+                }
+            }
         }
         Some(_) => Err(AppError::Unauthorized(
             "You do not own this collection".into(),
         )),
         None => Ok(HttpResponse::NotFound().finish()),
     }
+}
+
+async fn fetch_growth_accounting(
+    pool: &PgPool,
+    collection_id: i32,
+) -> Result<GrowthAccountingResult, sqlx::Error> {
+    let dau_query = format!(
+        r#"
+        SELECT
+            author AS user_id,
+            date_trunc('day', "date") AS dt,
+            count(*) AS inc_amt
+        FROM
+            "commit" c
+            LEFT JOIN collection_repository cr ON cr.repository_id = c.repository_id
+        WHERE
+            cr.collection_id = {}
+        GROUP BY
+            1,
+            2
+        "#,
+        collection_id
+    );
+
+    let mau_ga = mau_growth_accounting(pool, dau_query.clone()).await?;
+    let mrr_ga = mrr_growth_accounting(pool, dau_query.clone()).await?;
+    let ltv_cumulative = ltv_cohorts_cumulative(pool, dau_query.clone()).await?;
+    let mau_retention = mau_retention_by_cohort(pool, dau_query.clone()).await?;
+
+    Ok(GrowthAccountingResult {
+        mau_growth_accounting: mau_ga,
+        mrr_growth_accounting: mrr_ga,
+        mau_retention_by_cohort: mau_retention,
+        ltv_cumulative_cohort: ltv_cumulative,
+    })
 }

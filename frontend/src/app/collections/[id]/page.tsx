@@ -13,10 +13,23 @@ import {
 } from "@/components/ui/dialog";
 import { ManageRepositoriesDialog } from "@/components/ManageRepositoriesDialog";
 import { toast } from "@/hooks/use-toast";
-import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
+import {
+  MAUGrowthAccountingChart,
+  MAUGrowthAccountingData,
+} from "@/components/MAUGrowthAccountingChart";
+import {
+  MRRGrowthAccountingChart,
+  MRRGrowthAccountingData,
+} from "@/components/MRRGrowthAccountingChart";
+import {
+  CohortChart,
+  ChartType,
+  CohortDataItem,
+} from "@/components/CohortChart";
 import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { DateRange } from "react-day-picker";
+import { DatePickerWithRange } from "@/components/ui/date-picker";
 import { fetchWrapper } from "@/lib/fetchWrapper";
 import { useProfile } from "@/contexts/ProfileContext";
 
@@ -36,21 +49,26 @@ interface Repository {
   updated_at: Date;
 }
 
-interface GrowthAccountingData {
-  month: Date;
-  mau: number;
-  retained: number;
-  new: number;
-  resurrected: number;
-  churned: number;
+interface GrowthAccountingResponse {
+  mau_growth_accounting: MAUGrowthAccountingData[];
+  mrr_growth_accounting: MRRGrowthAccountingData[];
+  ltv_cumulative_cohort: CohortDataItem[];
 }
 
 export default function CollectionPage() {
   const { id } = useParams();
   const [collection, setCollection] = useState<Collection | null>(null);
   const [isManageReposDialogOpen, setIsManageReposDialogOpen] = useState(false);
-  const [growthData, setGrowthData] = useState<GrowthAccountingData[]>([]);
-  const [filteredData, setFilteredData] = useState<GrowthAccountingData[]>([]);
+  const [growthData, setGrowthData] = useState<GrowthAccountingResponse>({
+    mau_growth_accounting: [],
+    mrr_growth_accounting: [],
+    ltv_cumulative_cohort: [],
+  });
+  const [filteredData, setFilteredData] = useState<GrowthAccountingResponse>({
+    mau_growth_accounting: [],
+    mrr_growth_accounting: [],
+    ltv_cumulative_cohort: [],
+  });
   const { profile, dispatch } = useProfile();
 
   const today = new Date();
@@ -63,11 +81,25 @@ export default function CollectionPage() {
   const handleDateRangeChange = useCallback(
     (range: DateRange | undefined) => {
       if (range?.from && range?.to) {
-        const filtered = growthData.filter((item) => {
-          const itemDate = toZonedTime(new Date(item.month), "UTC");
-          return itemDate >= range.from! && itemDate <= range.to!;
+        const {
+          mau_growth_accounting,
+          mrr_growth_accounting,
+          ltv_cumulative_cohort,
+        } = growthData;
+        setFilteredData({
+          mau_growth_accounting: mau_growth_accounting.filter((item) => {
+            const itemDate = toZonedTime(new Date(item.month), "UTC");
+            return itemDate >= range.from! && itemDate <= range.to!;
+          }),
+          mrr_growth_accounting: mrr_growth_accounting.filter((item) => {
+            const itemDate = toZonedTime(new Date(item.month), "UTC");
+            return itemDate >= range.from! && itemDate <= range.to!;
+          }),
+          ltv_cumulative_cohort: ltv_cumulative_cohort.filter((item) => {
+            const itemDate = toZonedTime(new Date(item.first_month), "UTC");
+            return itemDate >= range.from! && itemDate <= range.to!;
+          }),
         });
-        setFilteredData(filtered);
       } else {
         setFilteredData(growthData);
       }
@@ -102,10 +134,7 @@ export default function CollectionPage() {
       if (!response.ok)
         throw new Error("Failed to fetch growth accounting data");
       const data = await response.json();
-      // const parsedData = data.map((item: any) => ({
-      //   ...item,
-      //   month: new Date(item.month),
-      // }));
+      console.log(data);
       setGrowthData(data);
       setFilteredData(data);
     } catch (error) {
@@ -170,12 +199,28 @@ export default function CollectionPage() {
       <h1 className="text-2xl font-bold mb-4">{collection.name}</h1>
       <p className="mb-4">{collection.description}</p>
 
-      {growthData.length > 0 && (
-        <GrowthAccountingChart
-          data={filteredData}
-          initialDateRange={initialDateRange}
-          onDateRangeChange={handleDateRangeChange}
-        />
+      {growthData.mau_growth_accounting.length > 0 && (
+        <>
+          <DatePickerWithRange
+            className="w-[300px]"
+            initialDateRange={initialDateRange}
+            onDateRangeChange={handleDateRangeChange}
+          />
+          <MAUGrowthAccountingChart data={filteredData.mau_growth_accounting} />
+          <MRRGrowthAccountingChart data={filteredData.mrr_growth_accounting} />
+          <CohortChart
+            data={filteredData.ltv_cumulative_cohort}
+            chartType={ChartType.LogoRetention}
+          />
+          <CohortChart
+            data={filteredData.ltv_cumulative_cohort}
+            chartType={ChartType.CohortLTV}
+          />
+          <CohortChart
+            data={filteredData.ltv_cumulative_cohort}
+            chartType={ChartType.CommitRetention}
+          />
+        </>
       )}
 
       <Dialog
@@ -183,11 +228,11 @@ export default function CollectionPage() {
         onOpenChange={setIsManageReposDialogOpen}
       >
         <DialogTrigger asChild>
-          <Button className="mt-4">Add Repositories</Button>
+          <Button className="mt-4">Manage Repositories</Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-[825px]">
           <DialogHeader>
-            <DialogTitle>Add Repositories to Collection</DialogTitle>
+            <DialogTitle>Manage Collection Repositories</DialogTitle>
           </DialogHeader>
           <ManageRepositoriesDialog
             collectionId={collection?.collection_id || 0}

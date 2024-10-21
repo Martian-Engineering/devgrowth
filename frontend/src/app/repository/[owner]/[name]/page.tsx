@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { GrowthAccountingChart } from "@/components/GrowthAccountingChart2";
+import {
+  MAUGrowthAccountingChart,
+  MAUGrowthAccountingData,
+} from "@/components/MAUGrowthAccountingChart";
 import { addMonths, startOfMonth, endOfMonth, subYears } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { DateRange } from "react-day-picker";
@@ -20,19 +23,10 @@ interface RepositoryMetadata {
   github_url: string;
 }
 
-interface GrowthAccountingData {
-  month: Date;
-  mau: number;
-  retained: number;
-  new: number;
-  resurrected: number;
-  churned: number;
-}
-
 export default function RepositoryPage() {
   const params = useParams();
   const [metadata, setMetadata] = useState<RepositoryMetadata | null>(null);
-  const [growthData, setGrowthData] = useState<GrowthAccountingData[]>([]);
+  const [growthData, setGrowthData] = useState<MAUGrowthAccountingData[]>([]);
   const [filteredData, setFilteredData] = useState(growthData);
 
   const today = new Date();
@@ -67,8 +61,9 @@ export default function RepositoryPage() {
       fetchWrapper(`/api/repositories/${params.owner}/${params.name}/ga`)
         .then((response) => response.json())
         .then((data) => {
-          setGrowthData(data);
-          setFilteredData(data);
+          console.log(data);
+          setGrowthData(data.mau_growth_accounting);
+          setFilteredData(data.mau_growth_accounting);
         });
     }
   }, [params.owner, params.name]);
@@ -104,11 +99,7 @@ export default function RepositoryPage() {
       </Card>
 
       {growthData.length > 0 && (
-        <GrowthAccountingChart
-          data={filteredData}
-          initialDateRange={initialDateRange}
-          onDateRangeChange={handleDateRangeChange}
-        />
+        <MAUGrowthAccountingChart data={filteredData} />
       )}
     </div>
   );
