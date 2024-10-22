@@ -44,13 +44,16 @@ export interface Collection {
   repositories: Repository[];
 }
 
+// TODO: Move to standalone file
 export interface Repository {
   repository_id: number;
   name: string;
   owner: string;
-  indexed_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
+  description?: string | null;
+  stargazers_count?: number;
+  indexed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 type ProfileAction =
@@ -148,8 +151,10 @@ function profileReducer(
                 name: "",
                 owner: "",
                 indexed_at: null,
-                created_at: new Date(),
-                updated_at: new Date(),
+                description: null,
+                stargazers_count: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
               },
             ],
           };

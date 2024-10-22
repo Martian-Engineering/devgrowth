@@ -7,15 +7,8 @@ import { useSession, signOut } from "next-auth/react";
 import { useProfile } from "@/contexts/ProfileContext";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import Breadcrumbs from "@/components/Breadcrumbs";
 
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -171,8 +164,6 @@ export default function Component({ children }: { children: React.ReactNode }) {
     window.location.href = "/";
   };
 
-  console.log(profile);
-
   return (
     <SidebarProvider>
       <Sidebar>
@@ -292,19 +283,7 @@ export default function Component({ children }: { children: React.ReactNode }) {
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink asChild>
-                  <Link href="/">Home</Link>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem>
-                <BreadcrumbPage>Data Fetching</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
+          <Breadcrumbs />
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 pt1">{children}</main>
       </SidebarInset>

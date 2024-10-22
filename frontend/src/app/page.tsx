@@ -4,38 +4,43 @@
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useEffect } from "react";
-import { StarredReposList } from "@/components/StarredReposList";
-import { CollectionsList } from "@/components/CollectionsList";
-import { useProfile } from "@/contexts/ProfileContext";
+import { useEffect, useState } from "react";
+import { useProfile, Repository } from "@/contexts/ProfileContext";
+import { fetchWrapper } from "@/lib/fetchWrapper";
+import { RepositoryCard } from "@/components/RepositoryCard";
 
 function Main() {
-  const { profile, refetchCollections } = useProfile();
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const { profile } = useProfile();
+
+  const fetchRepositories = async () => {
+    const response = await fetchWrapper("/api/repositories");
+    if (!response.ok) throw new Error("Failed to fetch repositories");
+    const data = await response.json();
+    console.log(data);
+    setRepositories(data);
+  };
+
+  useEffect(() => {
+    fetchRepositories();
+  }, []);
+
+  const handleCollectionUpdate = () => {
+    fetchRepositories();
+  };
 
   return (
-    <div className="w-full max-w-6xl">
-      <h1 className="text-3xl font-semibold mb-8">
-        Welcome,{" "}
-        {profile &&
-          profile.account &&
-          (profile.account.name || profile.account.login)}
-        !
-      </h1>
-      <div className="flex flex-col md:flex-row gap-8">
-        <div className="w-full md:w-1/2">
-          <StarredReposList
-            repos={profile.starred_repositories || []}
-            onCollectionUpdate={refetchCollections}
+    <div className="w-full max-w-6xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Your Repositories</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+        {repositories.map((repo) => (
+          <RepositoryCard
+            key={repo.repository_id}
+            repo={repo}
+            collections={profile?.collections || []}
+            onCollectionUpdate={handleCollectionUpdate}
           />
-        </div>
-        <div className="w-full md:w-1/2">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-semibold">Collections</h2>
-          </div>
-          <CollectionsList
-            collections={(profile && profile.collections) || []}
-          />
-        </div>
+        ))}
       </div>
     </div>
   );
