@@ -171,6 +171,8 @@ export default function Component({ children }: { children: React.ReactNode }) {
     window.location.href = "/";
   };
 
+  console.log(profile);
+
   return (
     <SidebarProvider>
       <Sidebar>
@@ -233,7 +235,9 @@ export default function Component({ children }: { children: React.ReactNode }) {
                       </Avatar>
                       <div className="grid flex-1 text-left text-sm leading-tight">
                         <span className="truncate font-semibold">
-                          {session.user.name}
+                          {profile?.account?.name
+                            ? `@${profile.account.name}`
+                            : session.user.name}
                         </span>
                         <span className="truncate text-xs">
                           {session.user?.email}
@@ -261,7 +265,9 @@ export default function Component({ children }: { children: React.ReactNode }) {
                         </Avatar>
                         <div className="grid flex-1 text-left text-sm leading-tight">
                           <span className="truncate font-semibold">
-                            {session.user.name}
+                            {profile?.account?.name
+                              ? `@${profile.account.name}`
+                              : session.user.name}
                           </span>
                           <span className="truncate text-xs">
                             {session.user.email}
