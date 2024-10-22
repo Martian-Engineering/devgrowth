@@ -190,15 +190,18 @@ export default function Component({ children }: { children: React.ReactNode }) {
               <AddCollectionButton />
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {profile.collections.map((collection) => (
-                    <SidebarMenuItem key={collection.collection_id}>
-                      <SidebarMenuButton asChild>
-                        <Link href={`/collections/${collection.collection_id}`}>
-                          <span className="truncate">{collection.name}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
+                  {profile.collections &&
+                    profile.collections.map((collection) => (
+                      <SidebarMenuItem key={collection.collection_id}>
+                        <SidebarMenuButton asChild>
+                          <Link
+                            href={`/collections/${collection.collection_id}`}
+                          >
+                            <span className="truncate">{collection.name}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
