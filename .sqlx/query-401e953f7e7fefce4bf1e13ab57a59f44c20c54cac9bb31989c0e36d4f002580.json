@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT cr.repository_id, ARRAY_AGG(cr.collection_id) as collection_ids\n        FROM collection_repository cr\n        JOIN collection c ON cr.collection_id = c.collection_id\n        WHERE c.owner_id = $1\n        GROUP BY cr.repository_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "repository_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "collection_ids",
+        "type_info": "Int4Array"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "401e953f7e7fefce4bf1e13ab57a59f44c20c54cac9bb31989c0e36d4f002580"
+}

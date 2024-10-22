@@ -414,32 +414,32 @@ pub struct MAURetentionByCohortResult {
     inc_amt: i64,
 }
 
-pub async fn mau_retention_by_cohort(
-    pool: &PgPool,
-    dau: String,
-) -> Result<Vec<MAURetentionByCohortResult>, sqlx::Error> {
-    let q = growth_accounting_query(
-        dau,
-        "SELECT
-            first_month,
-            months_since_first::BIGINT,
-            active_users::BIGINT,
-            inc_amt::BIGINT
-        FROM mau_retention_by_cohort"
-            .to_string(),
-    );
+// pub async fn mau_retention_by_cohort(
+//     pool: &PgPool,
+//     dau: String,
+// ) -> Result<Vec<MAURetentionByCohortResult>, sqlx::Error> {
+//     let q = growth_accounting_query(
+//         dau,
+//         "SELECT
+//             first_month,
+//             months_since_first::BIGINT,
+//             active_users::BIGINT,
+//             inc_amt::BIGINT
+//         FROM mau_retention_by_cohort"
+//             .to_string(),
+//     );
 
-    match sqlx::query_as::<_, MAURetentionByCohortResult>(&q)
-        .fetch_all(pool)
-        .await
-    {
-        Ok(results) => Ok(results),
-        Err(e) => {
-            log::error!("Error fetching MAU retention by cohort results: {}", e);
-            Err(e)
-        }
-    }
-}
+//     match sqlx::query_as::<_, MAURetentionByCohortResult>(&q)
+//         .fetch_all(pool)
+//         .await
+//     {
+//         Ok(results) => Ok(results),
+//         Err(e) => {
+//             log::error!("Error fetching MAU retention by cohort results: {}", e);
+//             Err(e)
+//         }
+//     }
+// }
 
 #[derive(sqlx::FromRow, Serialize, Debug, Deserialize)]
 pub struct LTVCohortsCumulativeResult {

@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            r.repository_id as id,\n            r.owner,\n            r.name,\n            COUNT(c.commit_id) as \"commit_count!\",\n            MAX(c.date) as \"latest_commit_date?\",\n            (SELECT author FROM commit WHERE repository_id = r.repository_id ORDER BY date DESC LIMIT 1) as \"latest_commit_author?\",\n            r.indexed_at,\n            CONCAT('https://github.com/', r.owner, '/', r.name) as \"github_url!\"\n        FROM\n            repository r\n        LEFT JOIN\n            commit c ON r.repository_id = c.repository_id\n        WHERE\n            r.owner = $1 AND r.name = $2\n        GROUP BY\n            r.repository_id\n        ",
+  "query": "\n        SELECT\n            r.repository_id,\n            r.owner,\n            r.name,\n            COUNT(c.commit_id) as \"commit_count!\",\n            MAX(c.date) as \"latest_commit_date?\",\n            (SELECT author FROM commit WHERE repository_id = r.repository_id ORDER BY date DESC LIMIT 1) as \"latest_commit_author?\",\n            r.indexed_at,\n            CONCAT('https://github.com/', r.owner, '/', r.name) as \"github_url!\"\n        FROM\n            repository r\n        LEFT JOIN\n            commit c ON r.repository_id = c.repository_id\n        WHERE\n            r.owner = $1 AND r.name = $2\n        GROUP BY\n            r.repository_id\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
+        "name": "repository_id",
         "type_info": "Int4"
       },
       {
@@ -61,5 +61,5 @@
       null
     ]
   },
-  "hash": "4e32ceafe561a4a8cdebe89be67221296b5aa24a364ec44ec6e30b2240dfe310"
+  "hash": "4f80b13ea23605fc903d7c7505d3f097de3759af1f14cc4b33f57cc5bb86b288"
 }

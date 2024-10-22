@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT repository_id as id, name, owner, indexed_at, created_at, updated_at\n        FROM repository\n        ORDER BY created_at DESC\n        LIMIT $1 OFFSET $2\n        ",
+  "query": "\n        UPDATE repository\n        SET stargazers_count = $1,\n            description = $2,\n            updated_at = $3\n        WHERE repository_id = $4\n        RETURNING repository_id, name, owner, indexed_at, created_at, updated_at, stargazers_count, description\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
+        "name": "repository_id",
         "type_info": "Int4"
       },
       {
@@ -32,12 +32,24 @@
         "ordinal": 5,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "stargazers_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "description",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8",
-        "Int8"
+        "Int4",
+        "Text",
+        "Timestamptz",
+        "Int4"
       ]
     },
     "nullable": [
@@ -46,8 +58,10 @@
       false,
       true,
       false,
-      false
+      false,
+      false,
+      true
     ]
   },
-  "hash": "d5136db753ab22c0fb283349af9f0c97646fcb795ebcf34dfe2eaa7b8073a8ad"
+  "hash": "1e545ef7ef8c8afb18099801d5f990008bfb0708094e1aa565ed8abe3215b414"
 }

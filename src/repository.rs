@@ -1,9 +1,8 @@
 use crate::error::AppError;
 use crate::github::{get_github_client, get_github_token};
 use crate::growth_accounting::{
-    ltv_cohorts_cumulative, mau_growth_accounting, mau_retention_by_cohort, mrr_growth_accounting,
-    LTVCohortsCumulativeResult, MAUGrowthAccountingResult, MAURetentionByCohortResult,
-    MRRGrowthAccountingResult,
+    ltv_cohorts_cumulative, mau_growth_accounting, mrr_growth_accounting,
+    LTVCohortsCumulativeResult, MAUGrowthAccountingResult, MRRGrowthAccountingResult,
 };
 use crate::job_queue::Job;
 use crate::AppState;
@@ -21,6 +20,8 @@ pub struct Repository {
     pub repository_id: i32,
     pub name: String,
     pub owner: String,
+    pub stargazers_count: i32,
+    pub description: Option<String>,
     pub indexed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -161,7 +162,7 @@ async fn fetch_repositories(
     sqlx::query_as!(
         Repository,
         r#"
-        SELECT repository_id, name, owner, indexed_at, created_at, updated_at
+        SELECT repository_id, name, owner, stargazers_count, description, indexed_at, created_at, updated_at
         FROM repository
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -178,16 +179,29 @@ async fn write_repository(
     repository_id: i32,
     repository_name: &str,
     repository_owner: &str,
+    stargazers_count: i32,
+    description: Option<&str>,
+    updated_at: DateTime<Utc>,
 ) -> Result<Repository, sqlx::Error> {
     let row = match sqlx::query!(
         r#"
-        INSERT INTO repository (repository_id, name, owner)
-        VALUES ($1, $2, $3)
-        RETURNING repository_id, name, owner, indexed_at, created_at, updated_at
+        INSERT INTO repository (repository_id, name, owner,
+        stargazers_count, description, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (repository_id) DO UPDATE
+        SET name = EXCLUDED.name,
+            owner = EXCLUDED.owner,
+            stargazers_count = EXCLUDED.stargazers_count,
+            description = EXCLUDED.description,
+            updated_at = EXCLUDED.updated_at
+        RETURNING repository_id, name, owner, indexed_at, created_at, updated_at, stargazers_count, description
         "#,
         repository_id,
         repository_name,
         repository_owner,
+        stargazers_count,
+        description,
+        updated_at
     )
     .fetch_one(pool)
     .await
@@ -209,6 +223,8 @@ async fn write_repository(
         indexed_at: row.indexed_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        stargazers_count: row.stargazers_count,
+        description: row.description,
     })
 }
 
@@ -249,6 +265,9 @@ pub async fn upsert_repository(
                 repo.id.0 as i32,
                 &repo.name,
                 &repo.owner.as_ref().map(|o| o.login.as_str()).unwrap_or(""),
+                repo.stargazers_count.unwrap_or(0) as i32,
+                repo.description.as_deref(),
+                repo.updated_at.unwrap_or_else(|| Utc::now()),
             )
             .await?;
 
@@ -277,7 +296,8 @@ async fn get_repository_by_id(pool: &PgPool, id: i32) -> Result<Option<Repositor
     sqlx::query_as!(
         Repository,
         r#"
-        SELECT repository_id, name, owner, indexed_at, created_at, updated_at
+        SELECT repository_id, name, owner, stargazers_count,
+        description, indexed_at, created_at, updated_at
         FROM repository
         WHERE repository_id = $1
         "#,
@@ -295,7 +315,8 @@ async fn get_repository_by_name_owner(
     sqlx::query_as!(
         Repository,
         r#"
-        SELECT repository_id, name, owner, indexed_at, created_at, updated_at
+        SELECT repository_id, name, owner, stargazers_count,
+        description, indexed_at, created_at, updated_at
         FROM repository
         WHERE name = $1 AND owner = $2
         "#,
@@ -304,6 +325,31 @@ async fn get_repository_by_name_owner(
     )
     .fetch_optional(pool)
     .await
+}
+
+async fn update_repository_from_github(
+    pool: &PgPool,
+    gh_repo: &octocrab::models::Repository,
+) -> Result<Repository, sqlx::Error> {
+    let row = sqlx::query_as!(
+        Repository,
+        r#"
+        UPDATE repository
+        SET stargazers_count = $1,
+            description = $2,
+            updated_at = $3
+        WHERE repository_id = $4
+        RETURNING repository_id, name, owner, indexed_at, created_at, updated_at, stargazers_count, description
+        "#,
+        gh_repo.stargazers_count.unwrap_or(0) as i32,
+        gh_repo.description.as_deref(),
+        gh_repo.updated_at.unwrap_or_else(|| Utc::now()),
+        gh_repo.id.0 as i32
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row)
 }
 
 pub async fn create_repository(
@@ -338,21 +384,47 @@ pub async fn sync_repository(
         }
     };
 
-    match get_repository_id(&state.db_pool, &owner, &name).await {
-        Ok(Some(repository_id)) => {
-            let job = Job {
-                repository_id,
-                owner: owner.clone(),
-                name: name.clone(),
-                github_token,
-            };
-            state.job_queue.push(job).await;
-            info!("Queued sync job for repository: {}/{}", owner, name);
-            HttpResponse::Accepted().json(json!({
-                "message": "Repository sync job queued",
-                "owner": owner,
-                "name": name
-            }))
+    let github_client = match get_github_client(&req) {
+        Ok(client) => client,
+        Err(_) => {
+            error!("Failed to get GitHub client from claims");
+            return HttpResponse::Unauthorized().finish();
+        }
+    };
+
+    match get_repository_by_name_owner(&state.db_pool, &name, &owner).await {
+        Ok(Some(_)) => {
+            // Fetch latest data from GitHub
+            match github_client.repos(owner.clone(), name.clone()).get().await {
+                Ok(gh_repo) => {
+                    // Update repository with latest GitHub data
+                    match update_repository_from_github(&state.db_pool, &gh_repo).await {
+                        Ok(updated_repo) => {
+                            let job = Job {
+                                repository_id: updated_repo.repository_id,
+                                owner: owner.clone(),
+                                name: name.clone(),
+                                github_token,
+                            };
+                            state.job_queue.push(job).await;
+                            info!("Queued sync job for repository: {}/{}", owner, name);
+                            HttpResponse::Accepted().json(json!({
+                                "message": "Repository sync job queued",
+                                "owner": owner,
+                                "name": name
+                            }))
+                        }
+                        Err(e) => {
+                            error!("Failed to update repository data: {:?}", e);
+                            HttpResponse::InternalServerError().finish()
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to fetch repository data from GitHub: {:?}", e);
+                    HttpResponse::InternalServerError().finish()
+                }
+            }
         }
         Ok(None) => {
             error!("Repository {}/{} not found in database", owner, name);
@@ -419,7 +491,6 @@ pub async fn get_repository_ga(
 pub struct GrowthAccountingResult {
     mau_growth_accounting: Vec<MAUGrowthAccountingResult>,
     mrr_growth_accounting: Vec<MRRGrowthAccountingResult>,
-    mau_retention_by_cohort: Vec<MAURetentionByCohortResult>,
     ltv_cumulative_cohort: Vec<LTVCohortsCumulativeResult>,
 }
 
@@ -448,12 +519,10 @@ async fn fetch_growth_accounting(
     let mau_ga = mau_growth_accounting(pool, dau_query.clone()).await?;
     let mrr_ga = mrr_growth_accounting(pool, dau_query.clone()).await?;
     let ltv_cumulative = ltv_cohorts_cumulative(pool, dau_query.clone()).await?;
-    let mau_retention = mau_retention_by_cohort(pool, dau_query.clone()).await?;
 
     Ok(GrowthAccountingResult {
         mau_growth_accounting: mau_ga,
         mrr_growth_accounting: mrr_ga,
-        mau_retention_by_cohort: mau_retention,
         ltv_cumulative_cohort: ltv_cumulative,
     })
 }

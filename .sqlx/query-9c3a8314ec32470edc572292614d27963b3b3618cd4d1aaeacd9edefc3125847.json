@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            c.collection_id,\n            c.owner_id,\n            c.name,\n            c.description,\n            c.is_default,\n            c.created_at,\n            c.updated_at,\n            COUNT(cr.repository_id)::bigint AS repository_count,\n            COALESCE(\n                json_agg(\n                    json_build_object(\n                        'repository_id', r.repository_id,\n                        'name', r.name,\n                        'owner', r.owner,\n                        'description', r.description,\n                        'stargazers_count', r.stargazers_count,\n                        'indexed_at', r.indexed_at,\n                        'created_at', r.created_at,\n                        'updated_at', r.updated_at\n                    )\n                ) FILTER (WHERE r.repository_id IS NOT NULL),\n                '[]'::json\n            ) AS repositories\n        FROM collection c\n        LEFT JOIN collection_repository cr ON c.collection_id = cr.collection_id\n        LEFT JOIN repository r ON cr.repository_id = r.repository_id\n        WHERE c.owner_id = $1\n        GROUP BY c.collection_id\n        ORDER BY c.created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "collection_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_default",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "repository_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "repositories",
+        "type_info": "Json"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "9c3a8314ec32470edc572292614d27963b3b3618cd4d1aaeacd9edefc3125847"
+}

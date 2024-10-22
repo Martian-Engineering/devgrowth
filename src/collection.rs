@@ -1,9 +1,8 @@
 use crate::auth_utils::get_account_id;
 use crate::error::AppError;
 use crate::growth_accounting::{
-    ltv_cohorts_cumulative, mau_growth_accounting, mau_retention_by_cohort, mrr_growth_accounting,
-    LTVCohortsCumulativeResult, MAUGrowthAccountingResult, MAURetentionByCohortResult,
-    MRRGrowthAccountingResult,
+    ltv_cohorts_cumulative, mau_growth_accounting, mrr_growth_accounting,
+    LTVCohortsCumulativeResult, MAUGrowthAccountingResult, MRRGrowthAccountingResult,
 };
 use crate::repository::{upsert_repository, NewRepository, Repository};
 use crate::AppState;
@@ -116,6 +115,8 @@ pub async fn get_collections(
                         'repository_id', r.repository_id,
                         'name', r.name,
                         'owner', r.owner,
+                        'description', r.description,
+                        'stargazers_count', r.stargazers_count,
                         'indexed_at', r.indexed_at,
                         'created_at', r.created_at,
                         'updated_at', r.updated_at
@@ -172,7 +173,9 @@ pub async fn get_collection(
             let repositories = sqlx::query_as!(
                 Repository,
                 r#"
-                SELECT r.repository_id, r.name, r.owner, r.indexed_at, r.created_at, r.updated_at
+                SELECT r.repository_id, r.name, r.owner,
+                r.description, r.stargazers_count,
+                r.indexed_at, r.created_at, r.updated_at
                 FROM repository r
                 JOIN collection_repository cr ON r.repository_id = cr.repository_id
                 WHERE cr.collection_id = $1
@@ -248,7 +251,8 @@ pub async fn update_collection(
             let repositories = sqlx::query_as!(
                 Repository,
                 r#"
-                SELECT r.repository_id, r.name, r.owner, r.indexed_at, r.created_at, r.updated_at
+                SELECT r.repository_id, r.name, r.owner, r.description,
+                r.stargazers_count, r.indexed_at, r.created_at, r.updated_at
                 FROM repository r
                 JOIN collection_repository cr ON r.repository_id = cr.repository_id
                 WHERE cr.collection_id = $1
@@ -475,7 +479,6 @@ pub async fn remove_repository_from_collection(
 pub struct GrowthAccountingResult {
     mau_growth_accounting: Vec<MAUGrowthAccountingResult>,
     mrr_growth_accounting: Vec<MRRGrowthAccountingResult>,
-    mau_retention_by_cohort: Vec<MAURetentionByCohortResult>,
     ltv_cumulative_cohort: Vec<LTVCohortsCumulativeResult>,
 }
 
@@ -543,12 +546,10 @@ async fn fetch_growth_accounting(
     let mau_ga = mau_growth_accounting(pool, dau_query.clone()).await?;
     let mrr_ga = mrr_growth_accounting(pool, dau_query.clone()).await?;
     let ltv_cumulative = ltv_cohorts_cumulative(pool, dau_query.clone()).await?;
-    let mau_retention = mau_retention_by_cohort(pool, dau_query.clone()).await?;
 
     Ok(GrowthAccountingResult {
         mau_growth_accounting: mau_ga,
         mrr_growth_accounting: mrr_ga,
-        mau_retention_by_cohort: mau_retention,
         ltv_cumulative_cohort: ltv_cumulative,
     })
 }
