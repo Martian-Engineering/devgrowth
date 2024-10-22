@@ -20,8 +20,8 @@ export function CollectionsList({ collections }: CollectionsListProps) {
           <CardContent>
             <p>{collection.description || "No description"}</p>
             <p className="mt-2 text-sm text-gray-500">
-              {collection.repositories.length}{" "}
-              {collection.repositories.length === 1
+              {collection.repositories && collection.repositories.length}{" "}
+              {collection.repositories && collection.repositories.length === 1
                 ? "repository"
                 : "repositories"}
             </p>
