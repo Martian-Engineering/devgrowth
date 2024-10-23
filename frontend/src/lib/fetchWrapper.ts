@@ -15,6 +15,7 @@ export async function fetchWrapper(url: string, options: RequestInit = {}) {
     throw error;
   }
 
+  // NOTE: there's something weird going on with the redirect logic here
   if (response.status === 401) {
     // Clear the session
     await signOut({ redirect: false });

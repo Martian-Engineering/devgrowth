@@ -33,7 +33,7 @@ import Link from "next/link";
 interface RepositoryCardProps {
   repo: Repository;
   collections: Collection[];
-  onCollectionUpdate: () => void;
+  onCollectionUpdate?: () => void;
 }
 
 export function RepositoryCard({
@@ -98,7 +98,7 @@ export function RepositoryCard({
             `Failed to ${isInCollection ? "remove from" : "add to"} collection`,
           );
         } else {
-          onCollectionUpdate();
+          if (onCollectionUpdate) onCollectionUpdate();
         }
       } catch (error) {
         console.error("Error updating repository in collection:", error);

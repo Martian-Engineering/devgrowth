@@ -1,33 +1,70 @@
 // app/page.tsx
 "use client";
 
+import React, { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useEffect, useState } from "react";
-import { useProfile, Repository } from "@/contexts/ProfileContext";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+
+import { useProfile } from "@/contexts/ProfileContext";
+import { Repository } from "@/lib/repository";
 import { fetchWrapper } from "@/lib/fetchWrapper";
 import { RepositoryCard } from "@/components/RepositoryCard";
+import { PaginatedResponse } from "@/types/PaginatedResponse";
+import {
+  ReloadIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+} from "@radix-ui/react-icons";
 
 function Main() {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [activeTab, setActiveTab] = useState("recent");
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalPages, setTotalPages] = useState(1);
+  const pageSize = 10; // repositories per page
   const { profile } = useProfile();
 
-  const fetchRepositories = async () => {
-    const response = await fetchWrapper("/api/repositories");
-    if (!response.ok) throw new Error("Failed to fetch repositories");
-    const data = await response.json();
-    setRepositories(data);
+  const fetchRepositories = async (pageNumber: number) => {
+    setIsLoading(true);
+    try {
+      const response = await fetchWrapper(
+        `/api/repositories?page=${pageNumber}&pageSize=${pageSize}`,
+      );
+      if (!response.ok) throw new Error("Failed to fetch repositories");
+      const data: PaginatedResponse<Repository> = await response.json();
+      setRepositories(data.data);
+      setTotalPages(data.total_pages);
+    } catch (error) {
+      console.error("Error fetching repositories:", error);
+    } finally {
+      console.log("here");
+      setTimeout(() => {
+        console.log("unset is loading");
+        setIsLoading(false);
+      }, 2000);
+    }
   };
 
   useEffect(() => {
-    fetchRepositories();
-  }, []);
+    fetchRepositories(page);
+  }, [page]);
 
-  const handleCollectionUpdate = () => {
-    fetchRepositories();
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    window.scrollTo(0, 0);
   };
 
   return (
@@ -48,10 +85,87 @@ function Main() {
                 key={repo.repository_id}
                 repo={repo}
                 collections={profile?.collections || []}
-                onCollectionUpdate={handleCollectionUpdate}
               />
             ))}
           </div>
+          {repositories.length > 0 && totalPages > 1 && (
+            <div className="mt-8">
+              <Pagination>
+                <PaginationContent>
+                  {page > 1 && (
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChange(page - 1);
+                        }}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <ChevronLeftIcon className="mr-2 h-4 w-4" />
+                        )}
+                        Previous
+                      </PaginationPrevious>
+                    </PaginationItem>
+                  )}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((pageNumber) => {
+                      if (totalPages <= 10) return true;
+                      // Always show first and last page
+                      if (pageNumber === 1 || pageNumber === totalPages)
+                        return true;
+                      // Show pages around current page
+                      if (Math.abs(pageNumber - page) <= 2) return true;
+                      return false;
+                    })
+                    .map((pageNumber, index, array) => (
+                      <React.Fragment key={pageNumber}>
+                        {index > 0 && array[index - 1] !== pageNumber - 1 && (
+                          <PaginationItem>
+                            <PaginationEllipsis />
+                          </PaginationItem>
+                        )}
+                        <PaginationItem>
+                          <PaginationLink
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handlePageChange(pageNumber);
+                            }}
+                            isActive={pageNumber === page}
+                            disabled={isLoading}
+                          >
+                            {pageNumber}
+                          </PaginationLink>
+                        </PaginationItem>
+                      </React.Fragment>
+                    ))}
+                  {page < totalPages && (
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChange(page + 1);
+                        }}
+                        disabled={isLoading}
+                      >
+                        Next
+                        {isLoading ? (
+                          <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <ChevronRightIcon className="ml-2 h-4 w-4" />
+                        )}
+                      </PaginationNext>
+                    </PaginationItem>
+                  )}
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

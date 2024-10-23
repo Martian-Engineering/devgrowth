@@ -15,6 +15,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
 
+#[derive(Serialize)]
+pub struct PaginatedResponse<T> {
+    data: Vec<T>,
+    total: i64,
+    page: i64,
+    page_size: i64,
+    total_pages: i64,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Repository {
     pub repository_id: i32,
@@ -36,8 +45,8 @@ pub struct NewRepository {
 
 #[derive(Deserialize)]
 pub struct RepositoryListQuery {
-    limit: Option<i64>,
-    offset: Option<i64>,
+    page: Option<i64>,
+    page_size: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -140,11 +149,21 @@ pub async fn list_repositories(
     state: web::Data<AppState>,
     query: Query<RepositoryListQuery>,
 ) -> impl Responder {
-    let limit = query.limit.unwrap_or(50); // Default limit to 50
-    let offset = query.offset.unwrap_or(0); // Default offset to 0
+    let page = query.page.unwrap_or(1);
+    let page_size = query.page_size.unwrap_or(10);
+    let offset = (page - 1) * page_size;
 
-    match fetch_repositories(&state.db_pool, limit, offset).await {
-        Ok(repositories) => HttpResponse::Ok().json(repositories),
+    match fetch_repositories_with_count(&state.db_pool, page_size, offset).await {
+        Ok((repositories, total)) => {
+            let total_pages = (total as f64 / page_size as f64).ceil() as i64;
+            HttpResponse::Ok().json(PaginatedResponse {
+                data: repositories,
+                total,
+                page,
+                page_size,
+                total_pages,
+            })
+        }
         Err(e) => {
             error!("Failed to fetch repositories: {:?}", e);
             HttpResponse::InternalServerError().json(json!({
@@ -154,12 +173,17 @@ pub async fn list_repositories(
     }
 }
 
-async fn fetch_repositories(
+async fn fetch_repositories_with_count(
     pool: &PgPool,
     limit: i64,
     offset: i64,
-) -> Result<Vec<Repository>, sqlx::Error> {
-    sqlx::query_as!(
+) -> Result<(Vec<Repository>, i64), sqlx::Error> {
+    let total = sqlx::query_scalar!("SELECT COUNT(*) FROM repository")
+        .fetch_one(pool)
+        .await?
+        .unwrap_or(0);
+
+    let repositories = sqlx::query_as!(
         Repository,
         r#"
         SELECT repository_id, name, owner, stargazers_count, description, indexed_at, created_at, updated_at
@@ -171,7 +195,9 @@ async fn fetch_repositories(
         offset
     )
     .fetch_all(pool)
-    .await
+    .await?;
+
+    Ok((repositories, total))
 }
 
 async fn write_repository(
