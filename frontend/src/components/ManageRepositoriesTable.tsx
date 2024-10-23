@@ -24,12 +24,13 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
-import { GithubRepo, useProfile } from "@/contexts/ProfileContext";
+import { useProfile } from "@/contexts/ProfileContext";
+import { Repository } from "@/lib/repository";
 
 interface ManageRepositoriesTableProps {
   collectionId: number;
-  repositories: GithubRepo[];
-  onSelectionChange: (selectedRepos: GithubRepo[]) => void;
+  repositories: Repository[];
+  onSelectionChange: (selectedRepos: Repository[]) => void;
 }
 
 export function ManageRepositoriesTable({
@@ -59,10 +60,18 @@ export function ManageRepositoriesTable({
       newSelection.add(repoId);
     }
     setSelection(newSelection);
-    onSelectionChange(repositories.filter((repo) => newSelection.has(repo.id)));
+
+    const collections = profile?.collections || [];
+    const collection = collections.find(
+      (collection) => collection.collection_id === collectionId,
+    ) || { repositories: [] };
+    const filterRepositories = repositories.concat(collection.repositories);
+    onSelectionChange(
+      filterRepositories.filter((repo) => newSelection.has(repo.repository_id)),
+    );
   };
 
-  const columns: ColumnDef<GithubRepo>[] = [
+  const columns: ColumnDef<Repository>[] = [
     {
       id: "select",
       header: () => (
@@ -72,11 +81,13 @@ export function ManageRepositoriesTable({
           }
           onCheckedChange={(value) => {
             const newSelection: Set<number> = value
-              ? new Set(repositories.map((repo) => repo.id))
+              ? new Set(repositories.map((repo) => repo.repository_id))
               : new Set();
             setSelection(newSelection);
             onSelectionChange(
-              repositories.filter((repo) => newSelection.has(repo.id)),
+              repositories.filter((repo) =>
+                newSelection.has(repo.repository_id),
+              ),
             );
           }}
           aria-label="Select all"
@@ -86,8 +97,11 @@ export function ManageRepositoriesTable({
         const repo = row.original;
         return (
           <Checkbox
-            checked={selection.has(repo.id)}
-            onCheckedChange={() => toggleSelection(repo.id)}
+            checked={selection.has(repo.repository_id)}
+            onCheckedChange={() => {
+              console.log("toggling selection", repo);
+              toggleSelection(repo.repository_id);
+            }}
             aria-label="Select row"
           />
         );
@@ -95,7 +109,7 @@ export function ManageRepositoriesTable({
     },
     {
       header: "Repository",
-      accessorFn: (row: GithubRepo) => `${row.owner}/${row.name}`,
+      accessorFn: (row: Repository) => `${row.owner}/${row.name}`,
     },
     {
       header: "Description",
@@ -119,7 +133,11 @@ export function ManageRepositoriesTable({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={() => window.open(row.original.html_url, "_blank")}
+              onClick={() => {
+                const { name, owner } = row.original;
+                const url = `https://github.com/${name}/${owner}`;
+                window.open(url, "_blank");
+              }}
             >
               View on GitHub
             </DropdownMenuItem>

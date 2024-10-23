@@ -2,10 +2,11 @@
 import { useCallback } from "react";
 import {
   ChevronDownIcon,
-  CircleIcon,
+  // CircleIcon,
   StarIcon,
   BookmarkIcon,
   BarChartIcon,
+  ExternalLinkIcon,
 } from "@radix-ui/react-icons";
 import {
   Card,
@@ -25,7 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
-import { useProfile, Collection, Repository } from "@/contexts/ProfileContext";
+import { useProfile, Collection } from "@/contexts/ProfileContext";
+import { Repository } from "@/lib/repository";
 import Link from "next/link";
 
 interface RepositoryCardProps {
@@ -137,6 +139,20 @@ export function RepositoryCard({
               className="w-[200px]"
               forceMount
             >
+              <DropdownMenuItem>
+                <BookmarkIcon className="mr-2 h-4 w-4" /> Save
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <ExternalLinkIcon className="mr-2 h-4 w-4" />
+                <a
+                  href={`https://github.com/${repo.owner}/${repo.name}`}
+                  target="_blank"
+                >
+                  View on GitHub
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuLabel>Add to Collection</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {collections.map((collection) => (
@@ -150,25 +166,25 @@ export function RepositoryCard({
                   {collection.name}
                 </DropdownMenuCheckboxItem>
               ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <BookmarkIcon className="mr-2 h-4 w-4" /> Save
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex space-x-4 text-sm text-muted-foreground">
-          <div className="flex items-center">
+          {/* <div className="flex items-center">
             <CircleIcon className="mr-1 h-3 w-3 fill-sky-400 text-sky-400" />
             {repo.language || "Unknown"}
-          </div>
+          </div> */}
           <div className="flex items-center">
             <StarIcon className="mr-1 h-3 w-3" />
-            {repo.stargazers_count || 0}
+            {repo.stargazers_count
+              ? repo.stargazers_count.toLocaleString("en-US")
+              : 0}
           </div>
-          <div>Updated {new Date(repo.updated_at).toLocaleDateString()}</div>
+          <div>
+            Updated {new Date(repo.updated_at || null).toLocaleDateString()}
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -4,6 +4,7 @@
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useEffect, useState } from "react";
 import { useProfile, Repository } from "@/contexts/ProfileContext";
 import { fetchWrapper } from "@/lib/fetchWrapper";
@@ -11,13 +12,13 @@ import { RepositoryCard } from "@/components/RepositoryCard";
 
 function Main() {
   const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [activeTab, setActiveTab] = useState("recent");
   const { profile } = useProfile();
 
   const fetchRepositories = async () => {
     const response = await fetchWrapper("/api/repositories");
     if (!response.ok) throw new Error("Failed to fetch repositories");
     const data = await response.json();
-    console.log(data);
     setRepositories(data);
   };
 
@@ -31,17 +32,28 @@ function Main() {
 
   return (
     <div className="w-full max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Your Repositories</h1>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-        {repositories.map((repo) => (
-          <RepositoryCard
-            key={repo.repository_id}
-            repo={repo}
-            collections={profile?.collections || []}
-            onCollectionUpdate={handleCollectionUpdate}
-          />
-        ))}
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="recent">Recent</TabsTrigger>
+          <TabsTrigger value="search">Search</TabsTrigger>
+        </TabsList>
+        <TabsContent value="recent">
+          <h1 className="text-2xl font-bold mb-4">Recent Repositories</h1>
+          <p className="text-muted-foreground mb-4">
+            These repositories have recently been added to devgrowth.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+            {repositories.map((repo) => (
+              <RepositoryCard
+                key={repo.repository_id}
+                repo={repo}
+                collections={profile?.collections || []}
+                onCollectionUpdate={handleCollectionUpdate}
+              />
+            ))}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

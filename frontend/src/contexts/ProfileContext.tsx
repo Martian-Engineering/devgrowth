@@ -8,10 +8,11 @@ import React, {
   useCallback,
 } from "react";
 import { fetchWrapper } from "@/lib/fetchWrapper";
+import { Repository, parseGithubRepos } from "@/lib/repository";
 
 export interface Profile {
   account?: Account;
-  starred_repositories?: GithubRepo[];
+  starred_repositories?: Repository[];
   repo_collections?: RepoCollectionMap;
   collections?: Collection[];
 }
@@ -21,16 +22,6 @@ export interface Account {
   login: string;
   name: string | null;
   email: string | null;
-}
-
-export interface GithubRepo {
-  id: number;
-  name: string;
-  owner: string;
-  html_url: string;
-  description: string | null;
-  stargazers_count: number | null;
-  synced_at: Date | null;
 }
 
 export interface RepoCollectionMap {
@@ -44,22 +35,10 @@ export interface Collection {
   repositories: Repository[];
 }
 
-// TODO: Move to standalone file
-export interface Repository {
-  repository_id: number;
-  name: string;
-  owner: string;
-  description?: string | null;
-  stargazers_count?: number;
-  indexed_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 type ProfileAction =
   // Internal
   | { type: "SET_ACCOUNT"; payload: Account }
-  | { type: "SET_STARRED_REPOS"; payload: GithubRepo[] }
+  | { type: "SET_STARRED_REPOS"; payload: Repository[] }
   | { type: "SET_REPO_COLLECTIONS"; payload: RepoCollectionMap }
   | { type: "SET_COLLECTIONS"; payload: Collection[] }
   // External
@@ -228,7 +207,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const fetchStarredRepos = useCallback(() => {
     fetchWrapper("/api/github/starred")
       .then((response) => response.json())
-      .then((data) => dispatch({ type: "SET_STARRED_REPOS", payload: data }))
+      .then((data) =>
+        dispatch({
+          type: "SET_STARRED_REPOS",
+          payload: parseGithubRepos(data),
+        }),
+      )
       .catch((error) => console.error("Error fetching starred repos:", error));
   }, []);
 

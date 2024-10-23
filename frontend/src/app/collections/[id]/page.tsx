@@ -199,6 +199,25 @@ export default function CollectionPage() {
       <h1 className="text-2xl font-bold mb-4">{collection.name}</h1>
       <p className="mb-4">{collection.description}</p>
 
+      <Dialog
+        open={isManageReposDialogOpen}
+        onOpenChange={setIsManageReposDialogOpen}
+      >
+        <DialogTrigger asChild>
+          <Button className="mt-4">Manage Repositories</Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[825px]">
+          <DialogHeader>
+            <DialogTitle>Manage Collection Repositories</DialogTitle>
+          </DialogHeader>
+          <ManageRepositoriesDialog
+            collectionId={collection?.collection_id || 0}
+            onRepositoriesChanged={handleRepositoriesChanged}
+            onClose={() => setIsManageReposDialogOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
       {growthData &&
         growthData.mau_growth_accounting &&
         growthData.mau_growth_accounting.length > 0 && (
@@ -228,25 +247,6 @@ export default function CollectionPage() {
             />
           </>
         )}
-
-      <Dialog
-        open={isManageReposDialogOpen}
-        onOpenChange={setIsManageReposDialogOpen}
-      >
-        <DialogTrigger asChild>
-          <Button className="mt-4">Manage Repositories</Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[825px]">
-          <DialogHeader>
-            <DialogTitle>Manage Collection Repositories</DialogTitle>
-          </DialogHeader>
-          <ManageRepositoriesDialog
-            collectionId={collection?.collection_id || 0}
-            onRepositoriesChanged={handleRepositoriesChanged}
-            onClose={() => setIsManageReposDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
 
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Repositories</h2>
