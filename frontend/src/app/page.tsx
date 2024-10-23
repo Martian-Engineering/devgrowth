@@ -27,6 +27,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "@radix-ui/react-icons";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function Main() {
   const [repositories, setRepositories] = useState<Repository[]>([]);
@@ -183,7 +184,34 @@ export default function Home() {
   }, [status, refetchProfile]);
 
   if (status === "loading") {
-    return <div>Loading...</div>;
+    return (
+      <div className="w-full max-w-6xl mx-auto">
+        <div className="space-y-4">
+          <div className="flex gap-4 items-center">
+            <Skeleton className="h-10 w-20" /> {/* Tab skeleton */}
+            <Skeleton className="h-10 w-20" />
+          </div>
+          <Skeleton className="h-8 w-48" /> {/* Heading skeleton */}
+          <Skeleton className="h-4 w-96" /> {/* Subtitle skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton
+                key={i}
+                className="h-32"
+              /> /* Repository card skeletons */
+            ))}
+          </div>
+          <div className="flex justify-center gap-2 mt-8">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton
+                key={i}
+                className="h-10 w-10"
+              /> /* Pagination skeletons */
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
   return (
     <>
