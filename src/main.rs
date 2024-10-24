@@ -23,6 +23,7 @@ mod job_processor;
 mod job_queue;
 mod middleware;
 mod repository;
+mod types;
 
 use collection::{
     add_repository_to_collection, create_collection, delete_collection, get_collection,
@@ -41,7 +42,7 @@ pub struct AppState {
 
 #[actix_web::main]
 async fn main() -> io::Result<()> {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
 
     let pool: PgPool = db::create_pool().await.expect("Failed to create pool");
     let job_queue = JobQueue::new();

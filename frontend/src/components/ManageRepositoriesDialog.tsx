@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { fetchWrapper } from "@/lib/fetchWrapper";
 import { useProfile } from "@/contexts/ProfileContext";
-import { Repository, parseGithubRepos } from "@/lib/repository";
+import { Repository, GithubRepo, parseGithubRepos } from "@/lib/repository";
 
 import { ReloadIcon } from "@radix-ui/react-icons";
 
 import { toast } from "@/hooks/use-toast";
+import { PaginatedResponse } from "@/types/PaginatedResponse";
 
 interface ManageRepositoriesDialogProps {
   collectionId: number;
@@ -36,6 +37,9 @@ export function ManageRepositoriesDialog({
   const [isFetchingOrg, setIsFetchingOrg] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [orgPage, setOrgPage] = useState(1);
+  const [orgTotalPages, setOrgTotalPages] = useState(1);
+  const pageSize = 10;
 
   useEffect(() => {
     if (activeTab === "starred") {
@@ -145,14 +149,19 @@ export function ManageRepositoriesDialog({
     }
   };
 
-  const fetchOrgRepositories = async () => {
+  const fetchOrgRepositories = async (pageNumber: number) => {
     if (!orgName) return;
     setIsFetchingOrg(true);
     try {
-      const response = await fetchWrapper(`/api/github/orgs/${orgName}/repos`);
+      const response = await fetchWrapper(
+        `/api/github/orgs/${orgName}/repos?page=${pageNumber}&page_size=${pageSize}`,
+      );
       if (response.ok) {
-        const data = await response.json();
-        setOrgRepos(parseGithubRepos(data));
+        const data: PaginatedResponse<GithubRepo> = await response.json();
+        setOrgRepos(parseGithubRepos(data.data));
+        setOrgTotalPages(data.total_pages);
+        setOrgPage(data.page);
+        console.log(data);
       } else {
         toast({
           title: "Error",
@@ -170,6 +179,11 @@ export function ManageRepositoriesDialog({
     } finally {
       setIsFetchingOrg(false);
     }
+  };
+
+  const handleOrgPageChange = (newPage: number) => {
+    setOrgPage(newPage);
+    fetchOrgRepositories(newPage);
   };
 
   const searchRepositories = async () => {
@@ -220,7 +234,7 @@ export function ManageRepositoriesDialog({
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            fetchOrgRepositories();
+            fetchOrgRepositories(1);
           }}
         >
           <div>
@@ -248,6 +262,11 @@ export function ManageRepositoriesDialog({
             collectionId={collectionId}
             repositories={orgRepos}
             onSelectionChange={setSelectedRepos}
+            totalPages={orgTotalPages}
+            currentPage={orgPage}
+            onPageChange={handleOrgPageChange}
+            isLoading={isFetchingOrg}
+            serverSidePagination={true}
           />
         )}
       </TabsContent>

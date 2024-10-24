@@ -5,6 +5,7 @@ use crate::growth_accounting::{
     LTVCohortsCumulativeResult, MAUGrowthAccountingResult, MRRGrowthAccountingResult,
 };
 use crate::job_queue::Job;
+use crate::types::PaginatedResponse;
 use crate::AppState;
 use actix_web::web::Query;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
@@ -14,15 +15,6 @@ use octocrab::Octocrab;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPool;
-
-#[derive(Serialize)]
-pub struct PaginatedResponse<T> {
-    data: Vec<T>,
-    total: i64,
-    page: i64,
-    page_size: i64,
-    total_pages: i64,
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Repository {

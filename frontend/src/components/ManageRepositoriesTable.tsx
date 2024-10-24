@@ -15,6 +15,15 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,20 +35,36 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { useProfile } from "@/contexts/ProfileContext";
 import { Repository } from "@/lib/repository";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ReloadIcon,
+} from "@radix-ui/react-icons";
 
 interface ManageRepositoriesTableProps {
   collectionId: number;
   repositories: Repository[];
   onSelectionChange: (selectedRepos: Repository[]) => void;
+  totalPages?: number;
+  currentPage?: number;
+  onPageChange?: (newPage: number) => void;
+  isLoading?: boolean;
+  serverSidePagination?: boolean;
 }
 
 export function ManageRepositoriesTable({
   collectionId,
   repositories,
   onSelectionChange,
+  totalPages,
+  currentPage,
+  onPageChange,
+  isLoading,
+  serverSidePagination = false,
 }: ManageRepositoriesTableProps) {
   const { profile } = useProfile();
   const [selection, setSelection] = useState<Set<number>>(new Set());
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const collections = profile?.collections || [];
@@ -154,6 +179,11 @@ export function ManageRepositoriesTable({
     getPaginationRowModel: getPaginationRowModel(),
   });
 
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    table.setPageIndex(newPage - 1);
+  };
+
   return (
     <div>
       <Table>
@@ -185,51 +215,155 @@ export function ManageRepositoriesTable({
           ))}
         </TableBody>
       </Table>
-      <div className="flex items-center justify-between mt-4">
-        <Button
-          onClick={() => table.setPageIndex(0)}
-          disabled={!table.getCanPreviousPage()}
-        >
-          {"<<"}
-        </Button>
-        <Button
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        >
-          {"<"}
-        </Button>
-        <Button
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
-          {">"}
-        </Button>
-        <Button
-          onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-          disabled={!table.getCanNextPage()}
-        >
-          {">>"}
-        </Button>
-        <span>
-          Page{" "}
-          <strong>
-            {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
-          </strong>{" "}
-        </span>
-        <select
-          value={table.getState().pagination.pageSize}
-          onChange={(e) => {
-            table.setPageSize(Number(e.target.value));
-          }}
-        >
-          {[5, 10].map((pageSize) => (
-            <option key={pageSize} value={pageSize}>
-              Show {pageSize}
-            </option>
-          ))}
-        </select>
-      </div>
+
+      {serverSidePagination
+        ? totalPages &&
+          totalPages > 1 && (
+            <div className="mt-8">
+              <Pagination>
+                <PaginationContent>
+                  {currentPage && currentPage > 1 && (
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onPageChange?.(currentPage - 1);
+                        }}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <ChevronLeftIcon className="mr-2 h-4 w-4" />
+                        )}
+                        Previous
+                      </PaginationPrevious>
+                    </PaginationItem>
+                  )}
+                  {currentPage &&
+                    Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((pageNumber) => {
+                        if (totalPages <= 10) return true;
+                        if (pageNumber === 1 || pageNumber === totalPages)
+                          return true;
+                        if (Math.abs(pageNumber - currentPage) <= 2)
+                          return true;
+                        return false;
+                      })
+                      .map((pageNumber, index, array) => (
+                        <React.Fragment key={pageNumber}>
+                          {index > 0 && array[index - 1] !== pageNumber - 1 && (
+                            <PaginationItem>
+                              <PaginationEllipsis />
+                            </PaginationItem>
+                          )}
+                          <PaginationItem>
+                            <PaginationLink
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                onPageChange?.(pageNumber);
+                              }}
+                              isActive={pageNumber === currentPage}
+                              disabled={isLoading}
+                            >
+                              {pageNumber}
+                            </PaginationLink>
+                          </PaginationItem>
+                        </React.Fragment>
+                      ))}
+                  {currentPage && currentPage < totalPages && (
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onPageChange?.(currentPage + 1);
+                        }}
+                        disabled={isLoading}
+                      >
+                        Next
+                        {isLoading ? (
+                          <ReloadIcon className="ml-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <ChevronRightIcon className="ml-2 h-4 w-4" />
+                        )}
+                      </PaginationNext>
+                    </PaginationItem>
+                  )}
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )
+        : table.getPageCount() > 1 && (
+            <div className="mt-8">
+              <Pagination>
+                <PaginationContent>
+                  {page > 1 && (
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChange(page - 1);
+                        }}
+                      >
+                        <ChevronLeftIcon className="mr-2 h-4 w-4" />
+                        Previous
+                      </PaginationPrevious>
+                    </PaginationItem>
+                  )}
+                  {Array.from({ length: table.getPageCount() }, (_, i) => i + 1)
+                    .filter((pageNumber) => {
+                      if (table.getPageCount() <= 10) return true;
+                      if (
+                        pageNumber === 1 ||
+                        pageNumber === table.getPageCount()
+                      )
+                        return true;
+                      if (Math.abs(pageNumber - page) <= 2) return true;
+                      return false;
+                    })
+                    .map((pageNumber, index, array) => (
+                      <React.Fragment key={pageNumber}>
+                        {index > 0 && array[index - 1] !== pageNumber - 1 && (
+                          <PaginationItem>
+                            <PaginationEllipsis />
+                          </PaginationItem>
+                        )}
+                        <PaginationItem>
+                          <PaginationLink
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handlePageChange(pageNumber);
+                            }}
+                            isActive={pageNumber === page}
+                          >
+                            {pageNumber}
+                          </PaginationLink>
+                        </PaginationItem>
+                      </React.Fragment>
+                    ))}
+                  {page < table.getPageCount() && (
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChange(page + 1);
+                        }}
+                      >
+                        Next
+                        <ChevronRightIcon className="ml-2 h-4 w-4" />
+                      </PaginationNext>
+                    </PaginationItem>
+                  )}
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
     </div>
   );
 }

@@ -10,7 +10,7 @@ export interface Repository {
   updated_at: string | null;
 }
 
-interface GithubRepo {
+export interface GithubRepo {
   id: number;
   name: string;
   owner: string;
