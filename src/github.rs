@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::{auth::Claims, types::PaginatedResponse};
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
+use http::Uri;
 use log::error;
 use octocrab::params::repos::Type;
 use octocrab::Octocrab;
@@ -38,11 +39,21 @@ pub struct GithubRepo {
     stargazers_count: Option<u32>,
 }
 
+#[derive(Deserialize)]
+pub struct StarredReposQuery {
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
 pub async fn get_starred_repositories(
     // state: web::Data<AppState>,
     req: HttpRequest,
+    query: web::Query<StarredReposQuery>, // Add query parameters
 ) -> Result<HttpResponse, AppError> {
     let github_client = get_github_client(&req)?;
+    let page = query.page.unwrap_or(1) as u8;
+    let page_size = query.page_size.unwrap_or(10) as u8;
+
     // Fetch the authenticated user's information
     match github_client.current().user().await {
         Ok(user) => user,
@@ -52,15 +63,18 @@ pub async fn get_starred_repositories(
         }
     };
 
-    // Fetch the user's starred repositories
-    let starred_repos = github_client
+    let repos = github_client
         .current()
         .list_repos_starred_by_authenticated_user()
-        .per_page(100) // Adjust this number as needed
+        .per_page(page_size)
+        .page(page)
         .send()
         .await?;
 
-    let starred_repositories: Vec<GithubRepo> = starred_repos
+    let total_pages = calculate_total_pages(page, repos.last.as_ref(), repos.prev.as_ref());
+    let total = total_pages * (page_size as i64);
+
+    let starred_repositories: Vec<GithubRepo> = repos
         .items
         .into_iter()
         .map(|repo| GithubRepo {
@@ -73,7 +87,13 @@ pub async fn get_starred_repositories(
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(starred_repositories))
+    Ok(HttpResponse::Ok().json(PaginatedResponse {
+        data: starred_repositories,
+        total,
+        page: page as i64,
+        page_size: page_size as i64,
+        total_pages,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -101,27 +121,7 @@ pub async fn get_organization_repositories(
         .await?;
 
     // Get the total pages from the last page URL
-    let total_pages = if let Some(last_url) = &repos.last {
-        // Parse the URL and get the page parameter
-        let last_url_str = last_url.to_string();
-        if let Some(page_param) = last_url_str
-            .split('&')
-            .find(|&s| s.starts_with("page="))
-            .and_then(|s| s.split('=').nth(1))
-            .and_then(|s| s.parse::<i64>().ok())
-        {
-            page_param
-        } else {
-            page as i64
-        }
-    } else if let Some(prev_url) = &repos.prev {
-        // On last page, so current page number is the total number of pages
-        page as i64
-    } else {
-        // single page of results
-        1
-    };
-
+    let total_pages = calculate_total_pages(page, repos.last.as_ref(), repos.prev.as_ref());
     let total = total_pages * (page_size as i64);
 
     let org_repositories: Vec<GithubRepo> = repos
@@ -149,22 +149,35 @@ pub async fn get_organization_repositories(
     }))
 }
 
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    q: String,
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
 pub async fn search_repositories(
     req: HttpRequest,
     query: web::Query<SearchQuery>,
 ) -> Result<HttpResponse, AppError> {
     let github_client = get_github_client(&req)?;
+    let page = query.page.unwrap_or(1) as u8;
+    let page_size = query.page_size.unwrap_or(10) as u8;
 
-    let search_results = github_client
+    let repos = github_client
         .search()
         .repositories(&query.q)
         .sort("updated")
         .order("desc")
-        .per_page(100)
+        .per_page(page_size)
+        .page(page)
         .send()
         .await?;
 
-    let search_repositories: Vec<GithubRepo> = search_results
+    let total_pages = calculate_total_pages(page, repos.last.as_ref(), repos.prev.as_ref());
+    let total = total_pages * (page_size as i64);
+
+    let search_repositories: Vec<GithubRepo> = repos
         .items
         .into_iter()
         .map(|repo| GithubRepo {
@@ -177,10 +190,31 @@ pub async fn search_repositories(
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(search_repositories))
+    Ok(HttpResponse::Ok().json(PaginatedResponse {
+        data: search_repositories,
+        total,
+        page: page as i64,
+        page_size: page_size as i64,
+        total_pages,
+    }))
 }
 
-#[derive(Deserialize)]
-pub struct SearchQuery {
-    q: String,
+fn calculate_total_pages(page: u8, last_url: Option<&Uri>, prev_url: Option<&Uri>) -> i64 {
+    if let Some(last_url) = last_url {
+        let last_url_str = last_url.to_string();
+        if let Some(page_param) = last_url_str
+            .split('&')
+            .find(|&s| s.starts_with("page="))
+            .and_then(|s| s.split('=').nth(1))
+            .and_then(|s| s.parse::<i64>().ok())
+        {
+            page_param
+        } else {
+            page as i64
+        }
+    } else if prev_url.is_some() {
+        page as i64
+    } else {
+        1
+    }
 }
